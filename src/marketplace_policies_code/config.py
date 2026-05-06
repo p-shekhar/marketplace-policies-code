@@ -20,8 +20,10 @@ class ProjectPaths:
     output_root: Path
 
     @classmethod
-    def from_cli(cls, source_root: str | Path, output_root: str | Path) -> "ProjectPaths":
-        return cls(source_root=Path(source_root).expanduser().resolve(), output_root=Path(output_root).expanduser().resolve())
+    def from_cli(cls, source_root: str | Path, output_root: str | Path) -> ProjectPaths:
+        return cls(
+            source_root=Path(source_root).expanduser().resolve(), output_root=Path(output_root).expanduser().resolve()
+        )
 
     @property
     def metadata_dir(self) -> Path:
@@ -70,4 +72,3 @@ class ProjectPaths:
     def ensure_output_dirs(self) -> None:
         for folder in [self.output_root, self.figure_dir, self.exported_table_dir, self.report_dir, self.bundle_dir]:
             folder.mkdir(parents=True, exist_ok=True)
-

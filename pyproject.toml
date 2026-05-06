@@ -24,10 +24,12 @@ keywords = [
 ]
 dependencies = [
   "graphviz>=0.20.3",
+  "lightgbm>=4.3",
   "matplotlib>=3.8",
   "numpy>=1.26",
   "pandas>=2.2",
   "pyarrow>=16",
+  "scikit-learn>=1.4",
   "seaborn>=0.13",
 ]
 

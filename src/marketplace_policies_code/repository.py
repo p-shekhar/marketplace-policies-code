@@ -100,4 +100,3 @@ class ArtifactRepository:
         manifest = output_dir / "artifact_manifest.csv"
         pd.DataFrame(rows).to_csv(manifest, index=False)
         return manifest
-

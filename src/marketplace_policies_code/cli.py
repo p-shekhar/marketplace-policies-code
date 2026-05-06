@@ -27,11 +27,17 @@ def build_parser() -> argparse.ArgumentParser:
             default="artifacts/workspace",
             help="Folder containing generated metadata/, tables/, data/processed/, and optional overleaf/.",
         )
-        subparser.add_argument("--output-root", default="artifacts", help="Folder where generated artifacts should be written.")
+        subparser.add_argument(
+            "--output-root", default="artifacts", help="Folder where generated artifacts should be written."
+        )
         subparser.add_argument("--data-root", default="data", help="Local folder containing ipinyou/archive.zip.")
-        subparser.add_argument("--full", action="store_true", help="Use all available season-two and season-three rows.")
+        subparser.add_argument(
+            "--full", action="store_true", help="Use all available season-two and season-three rows."
+        )
         subparser.add_argument("--quick", action="store_true", help="Use a bounded smoke-test subset of the raw data.")
-        subparser.add_argument("--skip-analysis", action="store_true", help="Skip raw-data analysis and reuse --source-root artifacts.")
+        subparser.add_argument(
+            "--skip-analysis", action="store_true", help="Skip raw-data analysis and reuse --source-root artifacts."
+        )
     return parser
 
 

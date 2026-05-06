@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
-import textwrap
 
 import graphviz
 import matplotlib as mpl
@@ -14,7 +14,6 @@ import seaborn as sns
 
 from marketplace_policies_code.config import PaperConfig
 from marketplace_policies_code.repository import ArtifactRepository
-
 
 PALETTE = {
     "navy": "#1f4e79",
@@ -160,13 +159,13 @@ class FigureRenderer:
 
     @staticmethod
     def edge_text(label: str, down_shift: int = 3) -> dict[str, str]:
-        top_spacer = f"<TR><TD COLSPAN=\"2\" HEIGHT=\"{down_shift}\"> </TD></TR>" if down_shift > 0 else ""
+        top_spacer = f'<TR><TD COLSPAN="2" HEIGHT="{down_shift}"> </TD></TR>' if down_shift > 0 else ""
         return {
             "xlabel": (
-                "<<TABLE BORDER=\"0\" CELLBORDER=\"0\" CELLPADDING=\"0\">"
+                '<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="0">'
                 f"{top_spacer}<TR>"
-                f"<TD><FONT FACE=\"DejaVu Sans\" POINT-SIZE=\"16\" COLOR=\"{PALETTE['slate']}\">{escape(label)}</FONT></TD>"
-                "<TD WIDTH=\"18\"> </TD></TR></TABLE>>"
+                f'<TD><FONT FACE="DejaVu Sans" POINT-SIZE="16" COLOR="{PALETTE["slate"]}">{escape(label)}</FONT></TD>'
+                '<TD WIDTH="18"> </TD></TR></TABLE>>'
             )
         }
 
@@ -244,7 +243,9 @@ class FigureRenderer:
             if previous:
                 self.arrow(dot, previous, node, "go/no-go")
             previous = node
-        dot.node("launch", "Launch only if\nconservative effect > 0\nand all guardrails pass", fillcolor=PALETTE["light_red"])
+        dot.node(
+            "launch", "Launch only if\nconservative effect > 0\nand all guardrails pass", fillcolor=PALETTE["light_red"]
+        )
         self.arrow(dot, str(previous), "launch", "ramp decision", color=PALETTE["red"])
         return self.render_graph(dot, "11_validation_sequence.png")
 
@@ -255,10 +256,26 @@ class FigureRenderer:
         dot.attr(nodesep="0.82")
         dot.attr("node", **self.node_attrs())
         dot.attr("edge", **self.edge_attrs())
-        dot.node("candidate", f"Priority candidate\n{policy_label(rec.policy_id, newline=True)}", fillcolor=PALETTE["light_blue"])
-        dot.node("evidence", f"Offline evidence\nReplay {pct(rec.replay_yield_lift)}\nP10 DR {pct(rec.p10_crossfit_dr_lift)}", fillcolor=PALETTE["light_green"])
-        dot.node("stress", f"Stress tests\nBreak-even response\n{pct(rec.break_even_market_response_loss_share)}", fillcolor=PALETTE["light_teal"])
-        dot.node("blocker", "Direct launch blocked\nNo real propensities\nNo live response estimate", fillcolor=PALETTE["light_red"])
+        dot.node(
+            "candidate",
+            f"Priority candidate\n{policy_label(rec.policy_id, newline=True)}",
+            fillcolor=PALETTE["light_blue"],
+        )
+        dot.node(
+            "evidence",
+            f"Offline evidence\nReplay {pct(rec.replay_yield_lift)}\nP10 DR {pct(rec.p10_crossfit_dr_lift)}",
+            fillcolor=PALETTE["light_green"],
+        )
+        dot.node(
+            "stress",
+            f"Stress tests\nBreak-even response\n{pct(rec.break_even_market_response_loss_share)}",
+            fillcolor=PALETTE["light_teal"],
+        )
+        dot.node(
+            "blocker",
+            "Direct launch blocked\nNo real propensities\nNo live response estimate",
+            fillcolor=PALETTE["light_red"],
+        )
         dot.node("action", "Next action\nShadow logging +\nexchange-hour switchback", fillcolor=PALETTE["light_purple"])
         self.arrow(dot, "candidate", "evidence", "screen")
         self.arrow(dot, "evidence", "stress", "survives")
@@ -278,7 +295,9 @@ class FigureRenderer:
             values = values[(values >= 0) & (values <= values.quantile(0.995))]
             long.append(pd.DataFrame({"price": values, "series": label}))
         fig, ax = plt.subplots(figsize=(8.6, 4.2))
-        sns.kdeplot(data=pd.concat(long, ignore_index=True), x="price", hue="series", common_norm=False, linewidth=2.0, ax=ax)
+        sns.kdeplot(
+            data=pd.concat(long, ignore_index=True), x="price", hue="series", common_norm=False, linewidth=2.0, ax=ax
+        )
         ax.set_xlabel("Price units, truncated at 99.5th percentile")
         ax.set_ylabel("Density")
         self.clean_axis(ax)
@@ -288,12 +307,20 @@ class FigureRenderer:
         df = self.repository.read_csv("season2_outcome_density.csv")
         df["event_date"] = pd.to_datetime(df["event_date"])
         fig, ax1 = plt.subplots(figsize=(8.4, 4.2))
-        ax1.bar(df["event_date"], df["bid_opportunities"] / 1e6, color=PALETTE["light_blue"], edgecolor=PALETTE["navy"], label="Bid opportunities")
+        ax1.bar(
+            df["event_date"],
+            df["bid_opportunities"] / 1e6,
+            color=PALETTE["light_blue"],
+            edgecolor=PALETTE["navy"],
+            label="Bid opportunities",
+        )
         ax1.bar(df["event_date"], df["filled"] / 1e6, color=PALETTE["teal"], alpha=0.8, label="Filled impressions")
         ax1.set_ylabel("Rows, millions")
         ax1.set_xlabel("Event date")
         ax2 = ax1.twinx()
-        ax2.plot(df["event_date"], df["fill_rate"] * 100, color=PALETTE["red"], marker="o", linewidth=2.2, label="Fill rate")
+        ax2.plot(
+            df["event_date"], df["fill_rate"] * 100, color=PALETTE["red"], marker="o", linewidth=2.2, label="Fill rate"
+        )
         ax2.set_ylabel("Fill rate (%)")
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
@@ -304,22 +331,57 @@ class FigureRenderer:
 
     def plot_calibration(self) -> Path:
         df = self.repository.read_csv("prototype_calibration_summary.csv").copy()
-        df["bin"] = np.arange(1, len(df) + 1)
         fig, ax = plt.subplots(figsize=(5.8, 4.4))
-        ax.plot(df["bin"], df["predicted_rate"], marker="o", linewidth=2.2, label="Predicted", color=PALETTE["navy"])
-        ax.plot(df["bin"], df["observed_rate"], marker="s", linewidth=2.2, label="Observed", color=PALETTE["coral"])
-        ax.set_xlabel("Predicted-probability bin")
-        ax.set_ylabel("Rate")
+        if "model_name" in df.columns and not df.empty:
+            for idx, (model_name, model_df) in enumerate(df.groupby("model_name", sort=False)):
+                color = [PALETTE["navy"], PALETTE["coral"], PALETTE["teal"], PALETTE["purple"]][idx % 4]
+                ax.plot(
+                    model_df["predicted_rate"],
+                    model_df["observed_rate"],
+                    marker="o",
+                    linewidth=1.8,
+                    label=model_name,
+                    color=color,
+                )
+            max_rate = max(df["predicted_rate"].max(), df["observed_rate"].max())
+            ax.plot(
+                [0, max_rate],
+                [0, max_rate],
+                linestyle="--",
+                color=PALETTE["slate"],
+                linewidth=1.2,
+                label="Perfect calibration",
+            )
+            ax.set_xlabel("Mean predicted probability")
+            ax.set_ylabel("Observed outcome rate")
+        else:
+            df["bin"] = np.arange(1, len(df) + 1)
+            ax.plot(
+                df["bin"], df["predicted_rate"], marker="o", linewidth=2.2, label="Predicted", color=PALETTE["navy"]
+            )
+            ax.plot(df["bin"], df["observed_rate"], marker="s", linewidth=2.2, label="Observed", color=PALETTE["coral"])
+            ax.set_xlabel("Predicted-probability bin")
+            ax.set_ylabel("Rate")
         ax.legend(loc="best")
         self.clean_axis(ax)
         return self.save(fig, "04_nuisance_model_calibration.png")
 
     def plot_frontier(self) -> Path:
-        df = self.repository.read_csv("marketplace_scorecard.csv").sort_values("weighted_evidence_score", ascending=False)
+        df = self.repository.read_csv("marketplace_scorecard.csv").sort_values(
+            "weighted_evidence_score", ascending=False
+        )
         fig, ax = plt.subplots(figsize=(8.1, 5.0))
         colors = np.where(df["policy_id"].eq(self.config.priority_policy_id), PALETTE["red"], PALETTE["blue"])
         sizes = 100 + 90 * df["weighted_evidence_score"]
-        ax.scatter(df["floor_changed_share"] * 100, df["pct_delta_yield_per_opportunity_vs_baseline"] * 100, s=sizes, c=colors, edgecolors=PALETTE["ink"], linewidths=0.8, alpha=0.92)
+        ax.scatter(
+            df["floor_changed_share"] * 100,
+            df["pct_delta_yield_per_opportunity_vs_baseline"] * 100,
+            s=sizes,
+            c=colors,
+            edgecolors=PALETTE["ink"],
+            linewidths=0.8,
+            alpha=0.92,
+        )
         for policy_id, offset in {
             self.config.priority_policy_id: (-72, 8),
             "min_positive_floor_q75": (8, -5),
@@ -329,7 +391,14 @@ class FigureRenderer:
             row = df[df["policy_id"].eq(policy_id)]
             if not row.empty:
                 point = row.iloc[0]
-                ax.annotate(policy_label(policy_id), (point.floor_changed_share * 100, point.pct_delta_yield_per_opportunity_vs_baseline * 100), xytext=offset, textcoords="offset points", fontsize=8.3, ha="left" if offset[0] >= 0 else "right")
+                ax.annotate(
+                    policy_label(policy_id),
+                    (point.floor_changed_share * 100, point.pct_delta_yield_per_opportunity_vs_baseline * 100),
+                    xytext=offset,
+                    textcoords="offset points",
+                    fontsize=8.3,
+                    ha="left" if offset[0] >= 0 else "right",
+                )
         ax.axhline(0, color=PALETTE["slate"], linewidth=1)
         ax.set_xlabel("Floor-changed opportunity share (%)")
         ax.set_ylabel("Yield lift vs. baseline (%)")
@@ -338,12 +407,24 @@ class FigureRenderer:
 
     def plot_daily_stability(self) -> Path:
         daily = self.repository.read_csv("reserve_policy_daily_effects.csv")
-        shortlist = self.repository.read_csv("marketplace_scorecard.csv").sort_values("weighted_evidence_score", ascending=False)["policy_id"].head(4)
+        shortlist = (
+            self.repository.read_csv("marketplace_scorecard.csv")
+            .sort_values("weighted_evidence_score", ascending=False)["policy_id"]
+            .head(4)
+        )
         daily = daily[daily["policy_id"].isin(shortlist)].copy()
         daily["event_date"] = pd.to_datetime(daily["event_date"])
         daily["policy"] = daily["policy_id"].map(policy_label)
         fig, ax = plt.subplots(figsize=(9.2, 4.1))
-        sns.lineplot(data=daily, x="event_date", y=daily["pct_delta_yield_per_opportunity_vs_daily_baseline"] * 100, hue="policy", marker="o", linewidth=2, ax=ax)
+        sns.lineplot(
+            data=daily,
+            x="event_date",
+            y=daily["pct_delta_yield_per_opportunity_vs_daily_baseline"] * 100,
+            hue="policy",
+            marker="o",
+            linewidth=2,
+            ax=ax,
+        )
         ax.axhline(0, color=PALETTE["slate"], linewidth=1)
         ax.set_xlabel("Event date")
         ax.set_ylabel("Daily yield lift (%)")
@@ -352,11 +433,26 @@ class FigureRenderer:
         return self.save(fig, "06_shortlist_daily_stability.png")
 
     def plot_ope_comparison(self) -> Path:
-        df = self.repository.read_csv("conservative_ranking_comparison.csv").sort_values("weighted_evidence_score", ascending=True)
+        df = self.repository.read_csv("conservative_ranking_comparison.csv").sort_values(
+            "weighted_evidence_score", ascending=True
+        )
         y = np.arange(len(df))
         fig, ax = plt.subplots(figsize=(8.4, 4.8))
-        ax.barh(y - 0.18, df["pct_delta_yield_per_opportunity_vs_baseline"] * 100, height=0.32, color=PALETTE["light_blue"], edgecolor=PALETTE["navy"], label="Replay mean")
-        ax.barh(y + 0.18, df["crossfit_dr_pct_lift_p10"] * 100, height=0.32, color=PALETTE["teal"], label="DR p10 lower tail")
+        ax.barh(
+            y - 0.18,
+            df["pct_delta_yield_per_opportunity_vs_baseline"] * 100,
+            height=0.32,
+            color=PALETTE["light_blue"],
+            edgecolor=PALETTE["navy"],
+            label="Replay mean",
+        )
+        ax.barh(
+            y + 0.18,
+            df["crossfit_dr_pct_lift_p10"] * 100,
+            height=0.32,
+            color=PALETTE["teal"],
+            label="DR p10 lower tail",
+        )
         ax.set_yticks(y)
         ax.set_yticklabels([policy_label(p) for p in df["policy_id"]])
         ax.set_xlabel("Lift vs. baseline (%)")
@@ -369,7 +465,13 @@ class FigureRenderer:
         df = df[df["policy_id"].ne("logged_floor_status_quo")].sort_values("effective_sample_size_ratio")
         labels = [policy_label(p) for p in df["policy_id"]]
         fig, axes = plt.subplots(1, 2, figsize=(9.2, 4.6), sharey=True)
-        axes[0].barh(labels, df["effective_sample_size_ratio"] * 100, color=PALETTE["teal"], edgecolor=PALETTE["ink"], linewidth=0.7)
+        axes[0].barh(
+            labels,
+            df["effective_sample_size_ratio"] * 100,
+            color=PALETTE["teal"],
+            edgecolor=PALETTE["ink"],
+            linewidth=0.7,
+        )
         axes[0].set_xlabel("ESS ratio (%)")
         axes[1].barh(labels, df["realized_weight_p99"], color=PALETTE["gold"], edgecolor=PALETTE["ink"], linewidth=0.7)
         axes[1].axvline(10, color=PALETTE["red"], linestyle="--", linewidth=1.4)
@@ -384,9 +486,17 @@ class FigureRenderer:
         df = df[df["policy_id"].ne("logged_floor_status_quo")].sort_values("crossfit_dr_pct_lift_p10")
         y = np.arange(len(df))
         fig, ax = plt.subplots(figsize=(8.4, 4.8))
-        ax.hlines(y, df["crossfit_dr_pct_lift_p05"] * 100, df["crossfit_dr_pct_lift_p90"] * 100, color=PALETTE["grid"], linewidth=7)
+        ax.hlines(
+            y,
+            df["crossfit_dr_pct_lift_p05"] * 100,
+            df["crossfit_dr_pct_lift_p90"] * 100,
+            color=PALETTE["grid"],
+            linewidth=7,
+        )
         ax.scatter(df["crossfit_dr_pct_lift_p50"] * 100, y, color=PALETTE["navy"], s=60, zorder=3, label="Median")
-        ax.scatter(df["crossfit_dr_pct_lift_p10"] * 100, y, color=PALETTE["red"], s=50, zorder=3, label="P10 lower tail")
+        ax.scatter(
+            df["crossfit_dr_pct_lift_p10"] * 100, y, color=PALETTE["red"], s=50, zorder=3, label="P10 lower tail"
+        )
         ax.set_yticks(y)
         ax.set_yticklabels([policy_label(p) for p in df["policy_id"]])
         ax.axvline(0, color=PALETTE["slate"], linewidth=1)
@@ -401,11 +511,18 @@ class FigureRenderer:
         df = df[df["policy_id"].isin(keep)].copy()
         df["policy"] = df["policy_id"].map(policy_label)
         fig, ax = plt.subplots(figsize=(7.7, 4.6))
-        sns.lineplot(data=df, x="response_loss_share", y=df["adjusted_pct_lift_vs_baseline"] * 100, hue="policy", linewidth=2.2, ax=ax)
+        sns.lineplot(
+            data=df,
+            x="response_loss_share",
+            y=df["adjusted_pct_lift_vs_baseline"] * 100,
+            hue="policy",
+            linewidth=2.2,
+            ax=ax,
+        )
         ax.axhline(0, color=PALETTE["slate"], linewidth=1)
         ax.set_xlabel("Adverse response loss share")
         ax.set_ylabel("Adjusted lift vs. baseline (%)")
-        ax.xaxis.set_major_formatter(lambda x, _: f"{100*x:.0f}%")
+        ax.xaxis.set_major_formatter(lambda x, _: f"{100 * x:.0f}%")
         ax.legend(title=None)
         self.clean_axis(ax)
         return self.save(fig, "10_equilibrium_sensitivity.png")
@@ -416,23 +533,38 @@ class FigureRenderer:
         df = df[df["policy_id"].isin(keep)].copy()
         df["policy"] = df["policy_id"].map(policy_label)
         fig, ax = plt.subplots(figsize=(7.7, 4.6))
-        sns.lineplot(data=df, x="support_scale", y=df["support_adjusted_p10_lift"] * 100, hue="policy", marker="o", linewidth=2.2, ax=ax)
+        sns.lineplot(
+            data=df,
+            x="support_scale",
+            y=df["support_adjusted_p10_lift"] * 100,
+            hue="policy",
+            marker="o",
+            linewidth=2.2,
+            ax=ax,
+        )
         ax.axhline(0, color=PALETTE["slate"], linewidth=1)
         ax.set_xlabel("Effective support scale")
         ax.set_ylabel("Support-adjusted p10 lift (%)")
-        ax.xaxis.set_major_formatter(lambda x, _: f"{100*x:.0f}%")
+        ax.xaxis.set_major_formatter(lambda x, _: f"{100 * x:.0f}%")
         ax.legend(title=None)
         self.clean_axis(ax)
         return self.save(fig, "10_support_collapse_curve.png")
 
     def plot_segment_heterogeneity(self) -> Path:
         df = self.repository.read_csv("advanced_policy_heterogeneity.csv")
-        plot_df = df[df["policy_id"].eq(self.config.priority_policy_id)].sort_values("segment_rows", ascending=False).head(18).copy()
+        plot_df = (
+            df[df["policy_id"].eq(self.config.priority_policy_id)]
+            .sort_values("segment_rows", ascending=False)
+            .head(18)
+            .copy()
+        )
         plot_df["segment"] = plot_df["segment_type"] + "=" + plot_df["segment_value"].astype(str)
         plot_df = plot_df.sort_values("segment_dr_lift")
         fig, ax = plt.subplots(figsize=(8.4, 5.6))
         colors = np.where(plot_df["segment_dr_lift"] >= 0, PALETTE["teal"], PALETTE["coral"])
-        ax.barh(plot_df["segment"], plot_df["segment_dr_lift"] * 100, color=colors, edgecolor=PALETTE["ink"], linewidth=0.5)
+        ax.barh(
+            plot_df["segment"], plot_df["segment_dr_lift"] * 100, color=colors, edgecolor=PALETTE["ink"], linewidth=0.5
+        )
         ax.axvline(0, color=PALETTE["slate"], linewidth=1)
         ax.set_xlabel("Segment DR lift (%)")
         ax.set_ylabel("Largest observed segments")
@@ -444,17 +576,28 @@ class FigureRenderer:
         metrics = pd.DataFrame(
             {
                 "metric": ["Replay lift", "P10 DR lift", "Break-even response", "Tests passed"],
-                "value": [row.top_policy_replay_lift * 100, row.top_policy_p10_dr_lift * 100, row.top_policy_break_even_response_loss * 100, row.tests_passed],
+                "value": [
+                    row.top_policy_replay_lift * 100,
+                    row.top_policy_p10_dr_lift * 100,
+                    row.top_policy_break_even_response_loss * 100,
+                    row.tests_passed,
+                ],
                 "display": [
-                    f"{row.top_policy_replay_lift*100:.1f}%",
-                    f"{row.top_policy_p10_dr_lift*100:.1f}%",
-                    f"{row.top_policy_break_even_response_loss*100:.1f}%",
+                    f"{row.top_policy_replay_lift * 100:.1f}%",
+                    f"{row.top_policy_p10_dr_lift * 100:.1f}%",
+                    f"{row.top_policy_break_even_response_loss * 100:.1f}%",
                     f"{int(row.tests_passed)} / {int(row.tests_passed + row.tests_review)}",
                 ],
             }
         )
         fig, ax = plt.subplots(figsize=(7.8, 4.2))
-        ax.barh(metrics["metric"], metrics["value"], color=[PALETTE["teal"], PALETTE["green"], PALETTE["gold"], PALETTE["navy"]], edgecolor=PALETTE["ink"], linewidth=0.7)
+        ax.barh(
+            metrics["metric"],
+            metrics["value"],
+            color=[PALETTE["teal"], PALETTE["green"], PALETTE["gold"], PALETTE["navy"]],
+            edgecolor=PALETTE["ink"],
+            linewidth=0.7,
+        )
         for y, val, text in zip(metrics["metric"], metrics["value"], metrics["display"], strict=False):
             ax.text(val + max(metrics["value"]) * 0.02, y, text, va="center", fontsize=9.5, fontweight="bold")
         ax.set_xlabel("Value")
@@ -466,7 +609,9 @@ class FigureRenderer:
         df = self.repository.read_csv("launch_readiness_checklist.csv")
         df["status_order"] = df["status"].map({"ready": 2, "validation_ready": 1, "blocked": 0})
         df = df.sort_values("status_order")
-        colors = df["status"].map({"ready": PALETTE["teal"], "validation_ready": PALETTE["gold"], "blocked": PALETTE["coral"]})
+        colors = df["status"].map(
+            {"ready": PALETTE["teal"], "validation_ready": PALETTE["gold"], "blocked": PALETTE["coral"]}
+        )
         fig, ax = plt.subplots(figsize=(8.3, 5.0))
         ax.barh(df["gate"], df["status_score"], color=colors, edgecolor=PALETTE["ink"], linewidth=0.6)
         ax.set_xlim(0, 2.25)
@@ -477,7 +622,9 @@ class FigureRenderer:
         return self.save(fig, "11_launch_readiness_checklist.png")
 
     def plot_scorecard_components(self) -> Path:
-        df = self.repository.read_csv("marketplace_scorecard.csv").sort_values("weighted_evidence_score", ascending=False)
+        df = self.repository.read_csv("marketplace_scorecard.csv").sort_values(
+            "weighted_evidence_score", ascending=False
+        )
         score_cols = [
             "yield_upside_score",
             "support_score",
@@ -487,11 +634,30 @@ class FigureRenderer:
             "heterogeneity_score",
             "interference_readiness_score",
         ]
-        labels = ["Yield", "Support", "Estimator\nagreement", "Lower\nbound", "Downside", "Heterogeneity", "Interference"]
+        labels = [
+            "Yield",
+            "Support",
+            "Estimator\nagreement",
+            "Lower\nbound",
+            "Downside",
+            "Heterogeneity",
+            "Interference",
+        ]
         heat = df.set_index("policy_id")[score_cols]
         heat.index = [policy_label(p) for p in heat.index]
         fig, ax = plt.subplots(figsize=(8.8, 4.8))
-        sns.heatmap(heat, cmap=sns.color_palette("YlGnBu", as_cmap=True), vmin=0, vmax=5, annot=True, fmt=".1f", linewidths=0.7, linecolor="white", cbar_kws={"label": "Score"}, ax=ax)
+        sns.heatmap(
+            heat,
+            cmap=sns.color_palette("YlGnBu", as_cmap=True),
+            vmin=0,
+            vmax=5,
+            annot=True,
+            fmt=".1f",
+            linewidths=0.7,
+            linecolor="white",
+            cbar_kws={"label": "Score"},
+            ax=ax,
+        )
         ax.set_xticklabels(labels, rotation=0)
         ax.set_xlabel("")
         ax.set_ylabel("")
@@ -501,7 +667,15 @@ class FigureRenderer:
         df = self.repository.read_csv("validation_design_detectability.csv").copy()
         df["design"] = df["design_id"].str.replace("_", " ").str.title()
         fig, ax = plt.subplots(figsize=(7.8, 4.7))
-        sns.lineplot(data=df, x="experiment_days", y=df["mde_yield_per_opportunity_pct_of_baseline"] * 100, hue="design", marker="o", linewidth=2.2, ax=ax)
+        sns.lineplot(
+            data=df,
+            x="experiment_days",
+            y=df["mde_yield_per_opportunity_pct_of_baseline"] * 100,
+            hue="design",
+            marker="o",
+            linewidth=2.2,
+            ax=ax,
+        )
         replay = df["priority_replay_lift"].iloc[0] * 100
         p10 = df["priority_p10_dr_lift"].iloc[0] * 100
         ax.axhline(replay, color=PALETTE["teal"], linestyle="--", linewidth=1.5, label="Replay lift")
@@ -514,15 +688,36 @@ class FigureRenderer:
 
     def plot_season3_transfer(self) -> Path:
         df = self.repository.read_csv("season2_vs_season3_policy_transfer.csv")
-        df["highlight"] = np.where(df["policy_id"].eq(self.config.priority_policy_id), "Priority policy", "Other policies")
+        df["highlight"] = np.where(
+            df["policy_id"].eq(self.config.priority_policy_id), "Priority policy", "Other policies"
+        )
         fig, ax = plt.subplots(figsize=(8.8, 6.8))
-        sns.scatterplot(data=df, x="season2_pct_yield_lift", y="season3_pct_yield_lift", hue="policy_family", style="highlight", s=110, ax=ax)
-        lims = [min(df["season2_pct_yield_lift"].min(), df["season3_pct_yield_lift"].min()) - 0.03, max(df["season2_pct_yield_lift"].max(), df["season3_pct_yield_lift"].max()) + 0.03]
+        sns.scatterplot(
+            data=df,
+            x="season2_pct_yield_lift",
+            y="season3_pct_yield_lift",
+            hue="policy_family",
+            style="highlight",
+            s=110,
+            ax=ax,
+        )
+        lims = [
+            min(df["season2_pct_yield_lift"].min(), df["season3_pct_yield_lift"].min()) - 0.03,
+            max(df["season2_pct_yield_lift"].max(), df["season3_pct_yield_lift"].max()) + 0.03,
+        ]
         ax.plot(lims, lims, color=PALETTE["slate"], linestyle="--", linewidth=1.2, label="Equal lift")
         ax.axhline(0, color=PALETTE["grid"], linewidth=1)
         ax.axvline(0, color=PALETTE["grid"], linewidth=1)
         priority_point = df[df["policy_id"].eq(self.config.priority_policy_id)].iloc[0]
-        ax.annotate(str(priority_point["policy_label"]), xy=(priority_point["season2_pct_yield_lift"], priority_point["season3_pct_yield_lift"]), xytext=(12, 10), textcoords="offset points", fontsize=9.5, weight="bold", arrowprops={"arrowstyle": "->", "color": PALETTE["ink"], "linewidth": 1.1})
+        ax.annotate(
+            str(priority_point["policy_label"]),
+            xy=(priority_point["season2_pct_yield_lift"], priority_point["season3_pct_yield_lift"]),
+            xytext=(12, 10),
+            textcoords="offset points",
+            fontsize=9.5,
+            weight="bold",
+            arrowprops={"arrowstyle": "->", "color": PALETTE["ink"], "linewidth": 1.1},
+        )
         ax.set_xlim(lims)
         ax.set_ylim(lims)
         ax.set_xlabel("Season-two yield lift vs. logged floor")
@@ -537,17 +732,39 @@ class FigureRenderer:
         row = self.repository.read_csv("season3_priority_policy_validation.csv").iloc[0]
         guardrail_values = pd.DataFrame(
             {
-                "metric": ["Yield lift", "Impression retention", "Click retention", "Conversion retention", "Value proxy retention"],
-                "value": [row.season3_pct_yield_lift, row.season3_retained_impression_share, row.season3_click_retention, row.season3_conversion_retention, row.season3_value_proxy_retention],
+                "metric": [
+                    "Yield lift",
+                    "Impression retention",
+                    "Click retention",
+                    "Conversion retention",
+                    "Value proxy retention",
+                ],
+                "value": [
+                    row.season3_pct_yield_lift,
+                    row.season3_retained_impression_share,
+                    row.season3_click_retention,
+                    row.season3_conversion_retention,
+                    row.season3_value_proxy_retention,
+                ],
                 "threshold": [0.0, 0.99, 0.99, 0.99, 0.99],
             }
         )
         fig, ax = plt.subplots(figsize=(9.8, 5.6))
-        colors = [PALETTE["blue"] if metric == "Yield lift" else PALETTE["green"] for metric in guardrail_values["metric"]]
+        colors = [
+            PALETTE["blue"] if metric == "Yield lift" else PALETTE["green"] for metric in guardrail_values["metric"]
+        ]
         sns.barplot(data=guardrail_values, x="metric", y="value", palette=colors, ax=ax)
         for idx, row in guardrail_values.iterrows():
             ax.hlines(row["threshold"], idx - 0.38, idx + 0.38, color=PALETTE["ink"], linewidth=2)
-            ax.text(idx, row["value"] + 0.025, f"{row['value']:.1%}", ha="center", va="bottom", fontsize=9.5, fontweight="bold")
+            ax.text(
+                idx,
+                row["value"] + 0.025,
+                f"{row['value']:.1%}",
+                ha="center",
+                va="bottom",
+                fontsize=9.5,
+                fontweight="bold",
+            )
         ax.set_xlabel("")
         ax.set_ylabel("Rate or lift")
         ax.yaxis.set_major_formatter(lambda y, _: f"{y:.0%}")
@@ -560,7 +777,9 @@ class FigureRenderer:
         df = self.repository.read_csv("season3_priority_policy_daily_validation.csv")
         df["event_date"] = pd.to_datetime(df["event_date"].astype(str))
         fig, ax = plt.subplots(figsize=(10.5, 5.6))
-        sns.lineplot(data=df, x="event_date", y="daily_yield_lift_pct", marker="o", color=PALETTE["blue"], linewidth=2.2, ax=ax)
+        sns.lineplot(
+            data=df, x="event_date", y="daily_yield_lift_pct", marker="o", color=PALETTE["blue"], linewidth=2.2, ax=ax
+        )
         ax.axhline(0, color=PALETTE["slate"], linestyle="--", linewidth=1.2)
         ax.set_xlabel("Season-three date")
         ax.set_ylabel("Daily yield lift vs. logged floor")
@@ -571,7 +790,15 @@ class FigureRenderer:
 
     def plot_decision_rule_gate_matrix(self) -> Path:
         df = self.repository.read_csv("decision_rule_gate_matrix.csv")
-        gate_columns = ["uses_replay", "uses_guardrails", "uses_ope", "uses_support", "uses_season3_validation", "uses_response_sensitivity", "uses_interference_or_propensity_gate"]
+        gate_columns = [
+            "uses_replay",
+            "uses_guardrails",
+            "uses_ope",
+            "uses_support",
+            "uses_season3_validation",
+            "uses_response_sensitivity",
+            "uses_interference_or_propensity_gate",
+        ]
         names = {
             "uses_replay": "Replay",
             "uses_guardrails": "Guardrails",
@@ -583,7 +810,17 @@ class FigureRenderer:
         }
         matrix = df.set_index("rule_label")[gate_columns].rename(columns=names).astype(int)
         fig, ax = plt.subplots(figsize=(11.5, 4.8))
-        sns.heatmap(matrix, cmap=sns.color_palette([PALETTE["light_red"], PALETTE["light_green"]], as_cmap=True), cbar=False, linewidths=0.8, linecolor="white", annot=matrix.replace({0: "No", 1: "Yes"}), fmt="", annot_kws={"fontsize": 12.5, "fontweight": "bold"}, ax=ax)
+        sns.heatmap(
+            matrix,
+            cmap=sns.color_palette([PALETTE["light_red"], PALETTE["light_green"]], as_cmap=True),
+            cbar=False,
+            linewidths=0.8,
+            linecolor="white",
+            annot=matrix.replace({0: "No", 1: "Yes"}),
+            fmt="",
+            annot_kws={"fontsize": 12.5, "fontweight": "bold"},
+            ax=ax,
+        )
         ax.set_xlabel("")
         ax.set_ylabel("")
         ax.tick_params(axis="x", rotation=25, labelsize=12)
@@ -592,9 +829,19 @@ class FigureRenderer:
 
     def plot_decision_rule_unresolved_gates(self) -> Path:
         df = self.repository.read_csv("decision_rule_ablation_summary.csv")
-        df["action_label"] = np.where(df["recommended_action_under_rule"].eq("direct_launch"), "Direct launch", "Online validation")
+        df["action_label"] = np.where(
+            df["recommended_action_under_rule"].eq("direct_launch"), "Direct launch", "Online validation"
+        )
         fig, ax = plt.subplots(figsize=(10.8, 5.6))
-        sns.barplot(data=df, x="rule_label", y="unresolved_launch_gate_count", hue="action_label", dodge=False, palette={"Direct launch": PALETTE["red"], "Online validation": PALETTE["blue"]}, ax=ax)
+        sns.barplot(
+            data=df,
+            x="rule_label",
+            y="unresolved_launch_gate_count",
+            hue="action_label",
+            dodge=False,
+            palette={"Direct launch": PALETTE["red"], "Online validation": PALETTE["blue"]},
+            ax=ax,
+        )
         ax.set_xlabel("")
         ax.set_ylabel("Unresolved launch gates")
         ax.tick_params(axis="x", rotation=25, labelsize=12)
@@ -615,7 +862,14 @@ class FigureRenderer:
         ax.xaxis.set_major_formatter(lambda x, _: f"{x:.0%}")
         ax.tick_params(axis="x", labelsize=12)
         ax.tick_params(axis="y", labelsize=12)
-        ax.legend(title="Selected policy", bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0, fontsize=11, title_fontsize=12)
+        ax.legend(
+            title="Selected policy",
+            bbox_to_anchor=(1.02, 1),
+            loc="upper left",
+            borderaxespad=0,
+            fontsize=11,
+            title_fontsize=12,
+        )
         self.clean_axis(ax)
         return self.save(fig, "14_decision_rule_bootstrap_selection.png")
 

@@ -8,10 +8,10 @@ This repository reproduces the empirical artifacts for the paper:
 
 **From Auction Replay to Launch Readiness: A Decision-Support Framework for Ads Marketplace Policies**
 
-The code is organized as a small, object-oriented Python package. It reads the original local iPinYou archive, rebuilds the bid-opportunity panels and policy-evaluation artifacts, regenerates the paper figures and result tables, validates the decision claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
+The code is organized as a small, object-oriented Python package. It reads the original local iPinYou archive, rebuilds the bid-opportunity panels, runs the same nuisance-model and assumption-aware off-policy evaluation workflow developed in the project notebooks, regenerates the paper figures and result tables, validates the decision claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
 
 <p align="center">
-  <img src="images/mermaid-diagram.png" alt="Marketplace policy reproduction architecture" width="55%">
+  <img src="images/mermaid-diagram.png" alt="Marketplace policy reproduction architecture" width="70%">
 </p>
 
 ## Pipeline Overview
@@ -22,8 +22,9 @@ The repo is built around one reproducibility contract: start from the original l
 | --- | --- | --- |
 | Raw data access | `IpinYouArchive` | Reads bz2 members inside the original iPinYou zip archive |
 | Panel construction | `OpportunityPanelBuilder` | Builds season-two and season-three bid-opportunity panels |
+| Nuisance modeling | `NuisanceModelTrainer` | Fits the Notebook 04 LightGBM prototype models and calibration diagnostics |
 | Policy replay | `ReservePolicyCatalog`, `PolicyReplayAnalyzer` | Replays non-decreasing reserve/floor policies |
-| Evidence synthesis | `DerivedEvidenceBuilder` | Builds OPE-style diagnostics, validation, scorecards, theory, and ablations |
+| Evidence synthesis | `DerivedEvidenceBuilder` | Runs the Notebook 08 simulated logger, HistGradientBoosting OPE, cross-fitted DR, bootstrap ranking, heterogeneity, validation, scorecards, theory, and ablations |
 | Figure generation | `FigureRenderer` | Rebuilds paper-facing diagnostic and validation figures |
 | Claim checks | `ResultValidator` | Verifies policy, lift, holdout, ablation, and action claims |
 | Full run | `RawToPaperPipeline`, `PaperReproductionPipeline` | Creates analysis artifacts, figures, tables, reports, manifest, and bundle |
@@ -33,11 +34,11 @@ The repo is built around one reproducibility contract: start from the original l
 The pipeline reproduces the paper-facing results from a local copy of the original iPinYou archive:
 
 - auction price and outcome-density diagnostics
-- nuisance-model calibration diagnostics
+- LightGBM nuisance-model metrics and calibration diagnostics
 - reserve/floor replay frontier and daily stability
 - season-three out-of-time validation figures
 - decision-rule ablation figures
-- OPE, support, lower-tail, and sensitivity figures
+- simulated-propensity IPS/SNIPS/DR diagnostics, support diagnostics, cross-fitted DR lower-tail ranking, downside-risk, heterogeneity, and sensitivity figures
 - launch-readiness and validation-design figures
 - paper tables selected by generated `final_table_selection.csv`
 - headline decision checks used in the manuscript
@@ -89,6 +90,23 @@ marketplace-policies reproduce --full
 ```
 
 The full run reads every available season-two training day and the season-three validation window. It can take a long time and will create large local parquet files under `artifacts/workspace/data/processed/`.
+
+## Python Dependencies
+
+The main runtime packages are:
+
+```text
+pandas
+numpy
+pyarrow
+matplotlib
+seaborn
+graphviz
+scikit-learn
+lightgbm
+```
+
+`scikit-learn` and `lightgbm` are required because the public repo mirrors the modeling work in the notebooks: Notebook 04 uses LightGBM nuisance models, and Notebook 08 uses `HistGradientBoostingRegressor` for the simulated-logger direct-method and doubly robust diagnostics. The Python `graphviz` package also needs the Graphviz `dot` executable available on the system path.
 
 ## Commands
 
@@ -169,4 +187,4 @@ ruff check .
 
 ## Reproducibility Boundary
 
-The package is a raw-data-to-paper reproduction repo. A fresh clone can regenerate the analysis artifacts, figures, selected paper tables, checks, and reports after the user places the original iPinYou archive under `data/ipinyou/archive.zip`. The quick mode is for smoke testing; `--full` is the paper-scale run.
+The package is a raw-data-to-paper reproduction repo, not a repository of precomputed paper artifacts. A fresh clone can regenerate the analysis artifacts, figures, selected paper tables, checks, and reports after the user places the original iPinYou archive under `data/ipinyou/archive.zip`. The code path intentionally mirrors the project notebooks: raw panel construction, LightGBM nuisance-model diagnostics, reserve/floor replay, simulated known-propensity OPE, cross-fitted DR, conservative bootstrap ranking, season-three validation, decision-rule ablations, and final launch-readiness checks. The quick mode is for smoke testing; `--full` is the paper-scale run.

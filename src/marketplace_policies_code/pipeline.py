@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 
 import pandas as pd
 
@@ -72,7 +72,9 @@ class PaperReproductionPipeline:
                     "season2_replay_lift": final.replay_yield_lift,
                     "dr_lower_tail_lift": final.p10_crossfit_dr_lift,
                     "season3_holdout_lift": season3.season3_pct_yield_lift,
-                    "simplified_rules_select_priority": bool(simplified["selected_policy_id"].eq(final.policy_id).all()),
+                    "simplified_rules_select_priority": bool(
+                        simplified["selected_policy_id"].eq(final.policy_id).all()
+                    ),
                     "simplified_rules_overclaim_direct_launch": int(simplified["direct_launch_overclaim"].sum()),
                     "full_dss_action": ablation.query("rule_id == 'full_dss'").iloc[0].recommended_action_under_rule,
                     "recommended_action": final.recommended_action,
@@ -150,4 +152,6 @@ class PaperReproductionPipeline:
         reports.append(self.paths.report_dir / "result_summary.md")
         bundle_files = self.make_bundle() if make_bundle else []
         manifest = self.repository.write_manifest(self.paths.output_root)
-        return PipelineResult(figures=figures, tables=tables, reports=reports, bundle_files=bundle_files, manifest=manifest)
+        return PipelineResult(
+            figures=figures, tables=tables, reports=reports, bundle_files=bundle_files, manifest=manifest
+        )

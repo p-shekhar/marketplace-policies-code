@@ -10,4 +10,3 @@ def test_project_paths_resolve(tmp_path: Path) -> None:
     assert paths.source_root == tmp_path.resolve()
     assert paths.output_root == (tmp_path / "artifacts").resolve()
     assert paths.metadata_dir.name == "metadata"
-
