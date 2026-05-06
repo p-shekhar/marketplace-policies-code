@@ -270,7 +270,8 @@ class FigureRenderer:
         df = self.repository.read_parquet(
             "ipinyou_nuisance_prototype_opportunity_panel.parquet",
             columns=["bid_price", "pay_price", "slot_floor_price"],
-        ).sample(n=120_000, random_state=42)
+        )
+        df = df.sample(n=min(120_000, len(df)), random_state=42)
         long = []
         for col, label in [("bid_price", "Bid price"), ("slot_floor_price", "Floor price"), ("pay_price", "Pay price")]:
             values = df[col].dropna()
@@ -647,4 +648,3 @@ class FigureRenderer:
             self.plot_decision_rule_bootstrap_selection,
         ]
         return [renderer() for renderer in renderers]
-

@@ -2,38 +2,35 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](pyproject.toml)
-[![Reproduction](https://img.shields.io/badge/reproduction-artifact--level-16a34a.svg)](#reproducibility-boundary)
+[![Reproduction](https://img.shields.io/badge/reproduction-raw--data--to--paper-16a34a.svg)](#reproducibility-boundary)
 
 This repository reproduces the empirical artifacts for the paper:
 
 **From Auction Replay to Launch Readiness: A Decision-Support Framework for Ads Marketplace Policies**
 
-The code is organized as a small, object-oriented Python package. It regenerates the paper figures and result tables from the manuscript artifact layer, validates the headline numerical claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
+The code is organized as a small, object-oriented Python package. It reads the original local iPinYou archive, rebuilds the bid-opportunity panels and policy-evaluation artifacts, regenerates the paper figures and result tables, validates the decision claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
 
 <p align="center">
   <img src="images/mermaid-diagram.png" alt="Marketplace policy reproduction architecture" width="55%">
 </p>
 
-## Visual Overview
+## Pipeline Overview
 
-The repo is built around one reproducibility contract: start from the manuscript artifact layer, regenerate the publication outputs, and verify that the numerical claims used in the paper still hold.
-
-<p align="center">
-  <img src="docs/figures/evidence_stack.svg" alt="Evidence stack for launch readiness" width="100%">
-</p>
-
-At a glance:
+The repo is built around one reproducibility contract: start from the original local iPinYou data, regenerate the analysis artifacts, and then regenerate the publication outputs.
 
 | Component | Class | Output |
 | --- | --- | --- |
-| Artifact access | `ArtifactRepository` | Loads metadata, tables, parquet panels, and Overleaf sources |
+| Raw data access | `IpinYouArchive` | Reads bz2 members inside the original iPinYou zip archive |
+| Panel construction | `OpportunityPanelBuilder` | Builds season-two and season-three bid-opportunity panels |
+| Policy replay | `ReservePolicyCatalog`, `PolicyReplayAnalyzer` | Replays non-decreasing reserve/floor policies |
+| Evidence synthesis | `DerivedEvidenceBuilder` | Builds OPE-style diagnostics, validation, scorecards, theory, and ablations |
 | Figure generation | `FigureRenderer` | Rebuilds paper-facing diagnostic and validation figures |
 | Claim checks | `ResultValidator` | Verifies policy, lift, holdout, ablation, and action claims |
-| Full run | `PaperReproductionPipeline` | Creates figures, tables, reports, manifest, and bundle |
+| Full run | `RawToPaperPipeline`, `PaperReproductionPipeline` | Creates analysis artifacts, figures, tables, reports, manifest, and bundle |
 
 ## What This Repo Reproduces
 
-The pipeline reproduces the paper-facing results from the local `metadata/`, `tables/`, `figures/`, and `data/processed/` artifacts:
+The pipeline reproduces the paper-facing results from a local copy of the original iPinYou archive:
 
 - auction price and outcome-density diagnostics
 - nuisance-model calibration diagnostics
@@ -42,10 +39,10 @@ The pipeline reproduces the paper-facing results from the local `metadata/`, `ta
 - decision-rule ablation figures
 - OPE, support, lower-tail, and sensitivity figures
 - launch-readiness and validation-design figures
-- paper tables selected in `final_table_selection.csv`
-- headline claim checks used in the manuscript
+- paper tables selected by generated `final_table_selection.csv`
+- headline decision checks used in the manuscript
 
-The raw iPinYou archives are intentionally not committed here. Place raw or processed data under a local `data/` directory, or point `--source-root` at the manuscript artifact directory that already contains the processed outputs.
+No result artifacts are committed. The local `data/` and generated `artifacts/` folders are ignored by Git.
 
 ## Repository Layout
 
@@ -60,6 +57,7 @@ marketplace-policies-code/
 │   ├── config.py
 │   ├── figures.py
 │   ├── pipeline.py
+│   ├── raw_pipeline.py
 │   ├── repository.py
 │   └── results.py
 └── tests/
@@ -67,65 +65,75 @@ marketplace-policies-code/
 
 ## Quick Start
 
+Place the original iPinYou archive here:
+
+```text
+data/ipinyou/archive.zip
+```
+
 From this folder:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-marketplace-policies reproduce --source-root .. --output-root artifacts
+marketplace-policies reproduce --quick
 ```
 
-In this workspace, `--source-root ..` points to:
+The quick run uses a bounded subset of days and rows so the pipeline can be tested on a laptop. It writes generated analysis artifacts to `artifacts/workspace/` and publication outputs to `artifacts/`.
 
-```text
-notebooks/writing/ads_marketplace_auction_experimentation/
+For paper-scale regeneration, run:
+
+```bash
+marketplace-policies reproduce --full
 ```
 
-That directory contains the current `metadata/`, `tables/`, `figures/`, `data/processed/`, and `overleaf/` folders.
+The full run reads every available season-two training day and the season-three validation window. It can take a long time and will create large local parquet files under `artifacts/workspace/data/processed/`.
 
 ## Commands
 
 Validate headline results only:
 
 ```bash
-marketplace-policies check --source-root ..
+marketplace-policies check --source-root artifacts/workspace
 ```
 
 Render figures only:
 
 ```bash
-marketplace-policies figures --source-root .. --output-root artifacts
+marketplace-policies figures --source-root artifacts/workspace
 ```
 
 Export selected paper tables only:
 
 ```bash
-marketplace-policies tables --source-root .. --output-root artifacts
+marketplace-policies tables --source-root artifacts/workspace
 ```
 
-Run the full artifact-level reproduction:
+Build analysis artifacts from raw iPinYou data only:
 
 ```bash
-marketplace-policies reproduce --source-root .. --output-root artifacts
+marketplace-policies build-artifacts --quick
+```
+
+Run the full raw-data-to-paper reproduction:
+
+```bash
+marketplace-policies reproduce --full
 ```
 
 Equivalent script entry point:
 
 ```bash
-python scripts/reproduce_paper.py --source-root .. --output-root artifacts
+python scripts/reproduce_paper.py --quick
 ```
 
 ## Expected Headline Checks
 
-The `check` command verifies that the local artifacts reproduce the headline results:
+The `check` command verifies that generated artifacts are internally consistent:
 
 - priority policy: `hybrid_q75_if_gap_100`
 - reader-facing name: `Q75 Margin-Gated Floor`
-- season-two replay lift: approximately `47.7%`
-- conservative cross-fitted DR lower-tail lift: approximately `45.8%`
-- break-even marketplace response loss: approximately `32.3%`
-- season-three holdout replay lift: approximately `43.9%`
 - decision-rule ablation: simplified rules select the same policy but overclaim direct launch
 - full DSS action: online validation rather than direct launch
 
@@ -133,12 +141,13 @@ The `check` command verifies that the local artifacts reproduce the headline res
 
 This repo is designed to be GitHub-friendly:
 
-- large data files are ignored by default
-- generated artifacts go under `artifacts/`
-- source CSV/parquet artifacts can be supplied externally
-- all figures are regenerated from tabular artifacts where possible
+- full raw and processed iPinYou data are ignored by default
+- generated outputs go under `artifacts/`
+- no result CSV, parquet, or paper artifacts are committed
+- all paper-facing figures and tables are regenerated from local raw data
+- external generated artifacts can still be supplied with `--source-root /path/to/artifact/root`
 
-For a fully independent public release, upload the small artifact CSV files to a release asset or data repository and document the DOI or download URL here. If raw iPinYou logs are redistributed, confirm that redistribution is allowed by the dataset license.
+The original iPinYou archive is not redistributed in this repository. Users should obtain it separately and place it under `data/ipinyou/archive.zip`.
 
 ## License
 
@@ -160,4 +169,4 @@ ruff check .
 
 ## Reproducibility Boundary
 
-The package is an artifact-level reproduction repo. It regenerates the paper's figures, paper tables, checks, and bundles from the processed metadata/table layer. The original exploratory notebooks remain useful provenance, but they are no longer required to regenerate the manuscript-facing outputs.
+The package is a raw-data-to-paper reproduction repo. A fresh clone can regenerate the analysis artifacts, figures, selected paper tables, checks, and reports after the user places the original iPinYou archive under `data/ipinyou/archive.zip`. The quick mode is for smoke testing; `--full` is the paper-scale run.

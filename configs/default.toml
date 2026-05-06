@@ -1,9 +1,12 @@
 [paths]
-# Source root should contain metadata/, tables/, figures/, data/, and optionally overleaf/.
-# When this repo lives inside notebooks/writing/ads_marketplace_auction_experimentation/,
-# the default source root is the parent directory.
-source_root = ".."
+# Source root should contain generated metadata/, tables/, and data/processed/.
+source_root = "artifacts/workspace"
 output_root = "artifacts"
+
+[raw_data]
+# Put the original iPinYou archive at data/ipinyou/archive.zip.
+data_root = "data"
+full_run = false
 
 [reproduction]
 render_figures = true

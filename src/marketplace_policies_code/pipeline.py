@@ -24,7 +24,7 @@ class PipelineResult:
 
 
 class PaperReproductionPipeline:
-    """End-to-end artifact-level reproduction pipeline for the paper."""
+    """Publication-output pipeline that consumes generated analysis artifacts."""
 
     def __init__(self, paths: ProjectPaths, config: PaperConfig | None = None) -> None:
         self.paths = paths
@@ -151,4 +151,3 @@ class PaperReproductionPipeline:
         bundle_files = self.make_bundle() if make_bundle else []
         manifest = self.repository.write_manifest(self.paths.output_root)
         return PipelineResult(figures=figures, tables=tables, reports=reports, bundle_files=bundle_files, manifest=manifest)
-

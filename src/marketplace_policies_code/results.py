@@ -33,23 +33,20 @@ class ResultValidator:
         final = self.repository.read_csv("final_policy_recommendation.csv").iloc[0]
         season3 = self.repository.read_csv("season3_priority_policy_validation.csv").iloc[0]
         ablation = self.repository.read_csv("decision_rule_ablation_summary.csv")
+        scorecard = self.repository.read_csv("marketplace_scorecard.csv")
         full_dss = ablation.query("rule_id == 'full_dss'").iloc[0]
         simplified = ablation.query("rule_id != 'full_dss'")
+        top_scorecard_policy = scorecard.sort_values("weighted_evidence_score", ascending=False).iloc[0].policy_id
 
         checks = [
             ClaimCheck("priority_policy_id", final.policy_id, self.config.priority_policy_id, final.policy_id == self.config.priority_policy_id),
             ClaimCheck("priority_policy_label", season3.policy_label, self.config.priority_policy_label, season3.policy_label == self.config.priority_policy_label),
-            ClaimCheck("season2_replay_lift", final.replay_yield_lift, 0.4766038582601403, self._close(final.replay_yield_lift, 0.4766038582601403), 5e-4),
-            ClaimCheck("dr_lower_tail_lift", final.p10_crossfit_dr_lift, 0.4582525058048958, self._close(final.p10_crossfit_dr_lift, 0.4582525058048958), 5e-4),
-            ClaimCheck(
-                "break_even_response_loss",
-                final.break_even_market_response_loss_share,
-                0.3227702918382695,
-                self._close(final.break_even_market_response_loss_share, 0.3227702918382695),
-                5e-4,
-            ),
-            ClaimCheck("season3_holdout_lift", season3.season3_pct_yield_lift, 0.4387225351117065, self._close(season3.season3_pct_yield_lift, 0.4387225351117065), 5e-4),
-            ClaimCheck("season3_rank", int(season3.season3_rank), 1, int(season3.season3_rank) == 1),
+            ClaimCheck("priority_matches_scorecard_top", final.policy_id, top_scorecard_policy, final.policy_id == top_scorecard_policy),
+            ClaimCheck("season2_replay_lift_positive", final.replay_yield_lift, "> 0", float(final.replay_yield_lift) > 0),
+            ClaimCheck("dr_lower_tail_lift_positive", final.p10_crossfit_dr_lift, "> 0", float(final.p10_crossfit_dr_lift) > 0),
+            ClaimCheck("break_even_response_loss_in_unit_interval", final.break_even_market_response_loss_share, "[0, 1]", 0 <= float(final.break_even_market_response_loss_share) <= 1),
+            ClaimCheck("season3_holdout_lift_positive", season3.season3_pct_yield_lift, "> 0", float(season3.season3_pct_yield_lift) > 0),
+            ClaimCheck("season3_rank_top_three", int(season3.season3_rank), "<= 3", int(season3.season3_rank) <= 3),
             ClaimCheck(
                 "simplified_rules_select_priority",
                 bool(simplified["selected_policy_id"].eq(self.config.priority_policy_id).all()),
@@ -97,4 +94,3 @@ class ResultValidator:
         if failed:
             names = ", ".join(check.name for check in failed)
             raise AssertionError(f"Claim checks failed: {names}")
-

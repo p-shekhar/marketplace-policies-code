@@ -1,27 +1,80 @@
+# Operating system / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python environments and caches
 .venv/
+venv/
+env/
+.env
+.env.*
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.DS_Store
+.pyre/
+.ipynb_checkpoints/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
 
-# Reproducible generated outputs
-artifacts/
-build/
-dist/
+# Packaging/build outputs
+/build/
+/dist/
+/*.egg-info/
 *.egg-info/
 
+# Reproducible generated outputs
+/artifacts/
+/reports/
+/outputs/
+
 # Large/local data. The README explains how to place or link these.
-data/
-metadata/
-tables/
-figures/
-overleaf/
+/data/
+/metadata/
+/tables/
+/figures/
+/overleaf/
 *.parquet
+*.feather
+*.orc
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.joblib
+*.db
+*.sqlite
+*.sqlite3
 *.zip
 *.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.bz2
+*.gz
 *.csv.tmp
+*.tmp
+*.bak
+
+# Experiment tracking / local run logs
+mlruns/
+wandb/
+runs/
+
+# Large generated reports/paper outputs
+*.pdf
+*.docx
 
 # Local LaTeX byproducts
 *.aux
@@ -33,3 +86,10 @@ overleaf/
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+*.bcf
+*.run.xml
