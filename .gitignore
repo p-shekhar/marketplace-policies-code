@@ -1,0 +1,35 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+
+# Reproducible generated outputs
+artifacts/
+build/
+dist/
+*.egg-info/
+
+# Large/local data. The README explains how to place or link these.
+data/
+metadata/
+tables/
+figures/
+overleaf/
+*.parquet
+*.zip
+*.rar
+*.csv.tmp
+
+# Local LaTeX byproducts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "marketplace-policies-code"
+version = "0.1.0"
+description = "Reproducible decision-support pipeline for ads marketplace reserve/floor-policy experiments."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Prashant Shekhar" }
+]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+]
+keywords = [
+  "decision-support-systems",
+  "off-policy-evaluation",
+  "real-time-bidding",
+  "marketplace-experimentation",
+  "causal-inference",
+]
+dependencies = [
+  "graphviz>=0.20.3",
+  "matplotlib>=3.8",
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "pyarrow>=16",
+  "seaborn>=0.13",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+marketplace-policies = "marketplace_policies_code.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/marketplace_policies_code"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

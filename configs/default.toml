@@ -1,0 +1,16 @@
+[paths]
+# Source root should contain metadata/, tables/, figures/, data/, and optionally overleaf/.
+# When this repo lives inside notebooks/writing/ads_marketplace_auction_experimentation/,
+# the default source root is the parent directory.
+source_root = ".."
+output_root = "artifacts"
+
+[reproduction]
+render_figures = true
+export_tables = true
+validate_claims = true
+make_bundle = true
+
+[paper]
+priority_policy_id = "hybrid_q75_if_gap_100"
+priority_policy_label = "Q75 Margin-Gated Floor"
