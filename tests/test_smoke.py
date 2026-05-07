@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from marketplace_policies_code.config import ProjectPaths
+from config import ProjectPaths
 
 
 def test_project_paths_resolve(tmp_path: Path) -> None:

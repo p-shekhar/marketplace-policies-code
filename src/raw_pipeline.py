@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from marketplace_policies_code.progress import ProgressLogger
+from progress import ProgressLogger
 
 BID_COLUMNS = [
     "bid_id",

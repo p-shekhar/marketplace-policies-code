@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from marketplace_policies_code.config import PaperConfig
-from marketplace_policies_code.repository import ArtifactRepository
+from config import PaperConfig
+from repository import ArtifactRepository
 
 
 @dataclass(frozen=True)

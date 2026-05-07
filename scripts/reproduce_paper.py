@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from marketplace_policies_code.cli import main
+from cli import main
 
 if __name__ == "__main__":
     args = sys.argv[1:]

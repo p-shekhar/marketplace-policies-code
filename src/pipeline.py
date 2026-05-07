@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from marketplace_policies_code.config import PaperConfig, ProjectPaths
-from marketplace_policies_code.figures import FigureRenderer
-from marketplace_policies_code.progress import ProgressLogger
-from marketplace_policies_code.repository import ArtifactRepository
-from marketplace_policies_code.results import ResultValidator
+from config import PaperConfig, ProjectPaths
+from figures import FigureRenderer
+from progress import ProgressLogger
+from repository import ArtifactRepository
+from results import ResultValidator
 
 
 @dataclass

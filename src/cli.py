@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from marketplace_policies_code.config import PaperConfig, ProjectPaths
-from marketplace_policies_code.figures import FigureRenderer
-from marketplace_policies_code.pipeline import PaperReproductionPipeline
-from marketplace_policies_code.progress import ProgressLogger
-from marketplace_policies_code.raw_pipeline import RawPipelineConfig, RawToPaperPipeline
-from marketplace_policies_code.repository import ArtifactRepository
-from marketplace_policies_code.results import ResultValidator
+from config import PaperConfig, ProjectPaths
+from figures import FigureRenderer
+from pipeline import PaperReproductionPipeline
+from progress import ProgressLogger
+from raw_pipeline import RawPipelineConfig, RawToPaperPipeline
+from repository import ArtifactRepository
+from results import ResultValidator
 
 
 def build_parser() -> argparse.ArgumentParser:

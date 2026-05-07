@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from marketplace_policies_code.config import PaperConfig
-from marketplace_policies_code.progress import ProgressLogger
-from marketplace_policies_code.repository import ArtifactRepository
+from config import PaperConfig
+from progress import ProgressLogger
+from repository import ArtifactRepository
 
 PALETTE = {
     "navy": "#1f4e79",

@@ -54,11 +54,12 @@ marketplace-policies-code/
 ├── pyproject.toml
 ├── README.md
 ├── scripts/reproduce_paper.py
-├── src/marketplace_policies_code/
+├── src/
 │   ├── cli.py
 │   ├── config.py
 │   ├── figures.py
 │   ├── pipeline.py
+│   ├── progress.py
 │   ├── raw_pipeline.py
 │   ├── repository.py
 │   └── results.py

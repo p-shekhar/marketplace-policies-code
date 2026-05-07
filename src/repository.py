@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from marketplace_policies_code.config import ProjectPaths
+from config import ProjectPaths
 
 
 @dataclass

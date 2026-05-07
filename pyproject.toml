@@ -40,10 +40,20 @@ dev = [
 ]
 
 [project.scripts]
-marketplace-policies = "marketplace_policies_code.cli:main"
+marketplace-policies = "cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/marketplace_policies_code"]
+only-include = [
+  "src/cli.py",
+  "src/config.py",
+  "src/figures.py",
+  "src/pipeline.py",
+  "src/progress.py",
+  "src/raw_pipeline.py",
+  "src/repository.py",
+  "src/results.py",
+]
+sources = ["src"]
 
 [tool.ruff]
 line-length = 120
