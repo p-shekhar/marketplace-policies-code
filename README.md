@@ -7,7 +7,7 @@
 
 This repository reproduces the empirical artifacts for the paper:
 
-**From Auction Replay to Launch Readiness: A Decision-Support Framework for Ads Marketplace Policies**
+**Paper: From Auction Replay to Launch Readiness: A Decision-Support Framework for Ads Marketplace Policies**
 
 The code is organized as a small, object-oriented Python package. It reads the original local iPinYou archive, rebuilds the bid-opportunity panels, runs the nuisance-model and assumption-aware off-policy evaluation workflow used in the paper, regenerates the paper figures and result tables, validates the decision claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
 
