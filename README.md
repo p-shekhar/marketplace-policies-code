@@ -32,7 +32,7 @@ The repo is built around one reproducibility contract: start from the original l
 
 ## What This Repo Reproduces
 
-The pipeline reproduces the paper-facing results from a local copy of the original iPinYou archive:
+The pipeline reproduces the paper-facing results from a local copy of the original iPinYou archive. It intentionally keeps the generated workspace narrow: after the raw analysis finishes, non-paper exploratory intermediates are pruned so the remaining artifacts correspond to manuscript figures, manuscript tables, checks, or the minimal data needed to regenerate them.
 
 - auction price and outcome-density diagnostics
 - LightGBM nuisance-model metrics and calibration diagnostics
@@ -119,8 +119,8 @@ All commands are exposed through the `marketplace-policies` CLI after `uv sync -
 
 | Command | Reads | Writes | Use when |
 | --- | --- | --- | --- |
-| `reproduce` | Raw iPinYou archive by default | Full `artifacts/workspace/` and `artifacts/` outputs | You want the complete raw-data-to-paper run |
-| `build-artifacts` | Raw iPinYou archive | Analysis artifacts under `artifacts/workspace/` | You only want to process raw data and stop before figures/tables/checks |
+| `reproduce` | Raw iPinYou archive by default | Paper-facing `artifacts/workspace/` and `artifacts/` outputs | You want the complete raw-data-to-paper run |
+| `build-artifacts` | Raw iPinYou archive | Paper-facing analysis artifacts under `artifacts/workspace/` | You only want to process raw data and stop before figures/tables/checks |
 | `figures` | Existing generated artifacts under `--source-root` | PNG figures under `artifacts/figures/` | You changed figure code or already have analysis artifacts |
 | `tables` | Existing generated artifacts under `--source-root` | Selected CSV tables under `artifacts/tables/` | You want the paper-facing result tables only |
 | `check` | Existing generated artifacts under `--source-root` | Claim-check reports under `artifacts/reports/` | You want to verify headline decision claims |
@@ -131,13 +131,13 @@ All commands are exposed through the `marketplace-policies` CLI after `uv sync -
 uv run marketplace-policies reproduce --full
 ```
 
-This is the main paper-scale command. It expects `data/ipinyou/archive.zip`, builds the season-two development panel, fits nuisance models, replays reserve/floor policies, runs the simulated-logger OPE and cross-fitted DR diagnostics, validates the priority policy on season three, regenerates figures and tables, validates headline claims, and writes an archival bundle.
+This is the main paper-scale command. It expects `data/ipinyou/archive.zip`, builds the season-two development panel, fits nuisance models, replays reserve/floor policies, runs the simulated-logger OPE and cross-fitted DR diagnostics, validates the priority policy on season three, regenerates only the figures and tables used in the manuscript, validates headline claims, and writes an archival bundle.
 
 Outputs:
 
-- `artifacts/workspace/metadata/`: intermediate and final analysis CSVs
-- `artifacts/workspace/tables/`: table-ready CSVs created during analysis
-- `artifacts/workspace/data/processed/`: generated parquet panels and samples
+- `artifacts/workspace/metadata/`: paper-used analysis CSVs and figure dependencies
+- `artifacts/workspace/tables/`: manuscript table CSVs
+- `artifacts/workspace/data/processed/`: minimal generated parquet sample needed for the price-distribution figure
 - `artifacts/figures/`: regenerated PNG figures
 - `artifacts/tables/`: selected paper-facing tables
 - `artifacts/reports/`: claim checks and result summaries
@@ -159,7 +159,7 @@ The quick run is useful for development checks, but it is not the final paper-sc
 uv run marketplace-policies build-artifacts --quick
 ```
 
-This reads the raw iPinYou archive and stops after generating the analysis workspace. It does not render figures, export selected tables, validate claim checks, or create the final bundle.
+This reads the raw iPinYou archive and stops after generating the pruned paper-facing analysis workspace. It does not render figures, export selected tables, validate claim checks, or create the final bundle.
 
 Use this when you want to inspect or debug the data-processing and estimation artifacts before running the full publication-output stage. Switch to `--full` when you want the paper-scale analysis artifacts:
 

@@ -118,7 +118,6 @@ class FigureRenderer:
             ax.set_title("")
         path = self.output_dir / filename
         fig.savefig(path, bbox_inches="tight", pad_inches=0.08, dpi=320)
-        fig.savefig(path.with_suffix(".pdf"), bbox_inches="tight", pad_inches=0.08)
         plt.close(fig)
         return path
 
@@ -185,9 +184,8 @@ class FigureRenderer:
 
     def render_graph(self, dot: graphviz.Digraph, filename: str) -> Path:
         stem = filename.replace(".png", "")
-        for fmt in ["png", "pdf", "svg"]:
-            dot.format = fmt
-            dot.render(str(self.output_dir / stem), cleanup=True)
+        dot.format = "png"
+        dot.render(str(self.output_dir / stem), cleanup=True)
         return self.output_dir / filename
 
     def render_interference_dag(self) -> Path:
@@ -877,38 +875,44 @@ class FigureRenderer:
         return self.save(fig, "14_decision_rule_bootstrap_selection.png")
 
     def render_all(self) -> list[Path]:
-        renderers = [
-            self.render_interference_dag,
-            self.render_replay_flow,
-            self.render_validation_sequence,
-            self.render_decision_waterfall,
-            self.plot_price_distributions,
-            self.plot_outcome_density,
-            self.plot_calibration,
-            self.plot_frontier,
-            self.plot_daily_stability,
-            self.plot_ope_comparison,
-            self.plot_weight_diagnostics,
-            self.plot_conservative_ranking,
-            self.plot_equilibrium_sensitivity,
-            self.plot_support_collapse,
-            self.plot_segment_heterogeneity,
-            self.plot_theory_verdict,
-            self.plot_launch_readiness,
-            self.plot_scorecard_components,
-            self.plot_mde_curves,
-            self.plot_season3_transfer,
-            self.plot_season3_guardrails,
-            self.plot_season3_daily_validation,
-            self.plot_decision_rule_gate_matrix,
-            self.plot_decision_rule_unresolved_gates,
-            self.plot_decision_rule_bootstrap_selection,
-        ]
+        renderer_by_filename = {
+            "01_sample_price_distributions.png": self.plot_price_distributions,
+            "03_marketplace_interference_dag.png": self.render_interference_dag,
+            "04_nuisance_model_calibration.png": self.plot_calibration,
+            "05_auction_replay_flow.png": self.render_replay_flow,
+            "05_outcome_density_by_day.png": self.plot_outcome_density,
+            "06_reserve_policy_tradeoff_frontier.png": self.plot_frontier,
+            "06_shortlist_daily_stability.png": self.plot_daily_stability,
+            "07_design_mde_curves.png": self.plot_mde_curves,
+            "08_conservative_lower_bound_ranking.png": self.plot_conservative_ranking,
+            "08_ope_estimator_comparison.png": self.plot_ope_comparison,
+            "08_segment_heterogeneity.png": self.plot_segment_heterogeneity,
+            "08_weight_diagnostics.png": self.plot_weight_diagnostics,
+            "09_scorecard_components.png": self.plot_scorecard_components,
+            "10_equilibrium_sensitivity.png": self.plot_equilibrium_sensitivity,
+            "10_support_collapse_curve.png": self.plot_support_collapse,
+            "10_theory_guided_verdict.png": self.plot_theory_verdict,
+            "11_decision_waterfall.png": self.render_decision_waterfall,
+            "11_launch_readiness_checklist.png": self.plot_launch_readiness,
+            "11_validation_sequence.png": self.render_validation_sequence,
+            "13_season2_vs_season3_transfer.png": self.plot_season3_transfer,
+            "13_season3_daily_priority_validation.png": self.plot_season3_daily_validation,
+            "13_season3_priority_policy_guardrails.png": self.plot_season3_guardrails,
+            "14_decision_rule_bootstrap_selection.png": self.plot_decision_rule_bootstrap_selection,
+            "14_decision_rule_gate_matrix.png": self.plot_decision_rule_gate_matrix,
+            "14_decision_rule_unresolved_gates.png": self.plot_decision_rule_unresolved_gates,
+        }
+        selection = self.repository.selected_figures()
+        filenames = selection.loc[selection["exists"].astype(bool), "filename"].astype(str).tolist()
+        missing = [filename for filename in filenames if filename not in renderer_by_filename]
+        if missing:
+            raise KeyError("No renderer registered for selected figure(s): " + ", ".join(missing))
+        renderers = [(filename, renderer_by_filename[filename]) for filename in filenames]
         rendered: list[Path] = []
         total = len(renderers)
         self.progress.step(f"rendering {total} figures")
-        for index, renderer in enumerate(renderers, start=1):
-            self.progress.log(f"Rendering figure {index}/{total}: {renderer.__name__}")
+        for index, (filename, renderer) in enumerate(renderers, start=1):
+            self.progress.log(f"Rendering paper figure {index}/{total}: {filename}")
             path = renderer()
             rendered.append(path)
             self.progress.log(f"Wrote figure {index}/{total}: {path.name}")
