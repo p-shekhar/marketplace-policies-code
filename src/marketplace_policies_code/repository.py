@@ -13,7 +13,7 @@ from marketplace_policies_code.config import ProjectPaths
 class ArtifactRepository:
     """Typed-ish access layer for paper artifacts.
 
-    The notebooks generated many CSV files. This class centralizes lookup rules so
+    The pipeline generates many CSV files. This class centralizes lookup rules so
     figure, table, and validation code do not hard-code folder details.
     """
 
@@ -60,28 +60,6 @@ class ArtifactRepository:
             destination = output_dir / source.name
             shutil.copy2(source, destination)
             copied.append(destination)
-        return copied
-
-    def copy_overleaf_sources(self, output_dir: Path) -> list[Path]:
-        """Create a lightweight paper bundle with TeX, BibTeX, PDF, and figures."""
-
-        if not self.paths.overleaf_dir.exists():
-            return []
-        output_dir.mkdir(parents=True, exist_ok=True)
-        copied: list[Path] = []
-        for source in self.paths.overleaf_dir.iterdir():
-            if source.is_file() and source.suffix in {".tex", ".bib", ".pdf"}:
-                destination = output_dir / source.name
-                shutil.copy2(source, destination)
-                copied.append(destination)
-        source_figures = self.paths.overleaf_dir / "figures"
-        if source_figures.exists():
-            destination_figures = output_dir / "figures"
-            destination_figures.mkdir(exist_ok=True)
-            for figure in source_figures.glob("*.png"):
-                destination = destination_figures / figure.name
-                shutil.copy2(figure, destination)
-                copied.append(destination)
         return copied
 
     def write_manifest(self, output_dir: Path) -> Path:

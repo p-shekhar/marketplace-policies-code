@@ -7,7 +7,7 @@ output_root = "artifacts"
 # Put the original iPinYou archive at data/ipinyou/archive.zip.
 data_root = "data"
 full_run = false
-# Notebook-faithful modeling defaults used by the raw-data pipeline:
+# Paper reproduction modeling defaults used by the raw-data pipeline:
 # - LightGBM nuisance prototype sample: 250,000 rows
 # - OPE sample: 100,000 rows per season-two day
 # - HistGradientBoosting OPE train/eval caps: 250,000 / 300,000 rows

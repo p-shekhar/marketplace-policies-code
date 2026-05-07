@@ -13,6 +13,7 @@ import pandas as pd
 import seaborn as sns
 
 from marketplace_policies_code.config import PaperConfig
+from marketplace_policies_code.progress import ProgressLogger
 from marketplace_policies_code.repository import ArtifactRepository
 
 PALETTE = {
@@ -71,8 +72,10 @@ class FigureRenderer:
     repository: ArtifactRepository
     output_dir: Path
     config: PaperConfig = PaperConfig()
+    progress: ProgressLogger | None = None
 
     def __post_init__(self) -> None:
+        self.progress = self.progress or ProgressLogger(enabled=False)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.set_style()
 
@@ -901,4 +904,12 @@ class FigureRenderer:
             self.plot_decision_rule_unresolved_gates,
             self.plot_decision_rule_bootstrap_selection,
         ]
-        return [renderer() for renderer in renderers]
+        rendered: list[Path] = []
+        total = len(renderers)
+        self.progress.step(f"rendering {total} figures")
+        for index, renderer in enumerate(renderers, start=1):
+            self.progress.log(f"Rendering figure {index}/{total}: {renderer.__name__}")
+            path = renderer()
+            rendered.append(path)
+            self.progress.log(f"Wrote figure {index}/{total}: {path.name}")
+        return rendered

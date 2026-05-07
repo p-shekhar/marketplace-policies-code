@@ -46,10 +46,6 @@ class ProjectPaths:
         return self.data_dir / "processed"
 
     @property
-    def overleaf_dir(self) -> Path:
-        return self.source_root / "overleaf"
-
-    @property
     def artifact_dir(self) -> Path:
         return self.output_root
 

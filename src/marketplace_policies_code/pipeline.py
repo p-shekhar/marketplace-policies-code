@@ -8,6 +8,7 @@ import pandas as pd
 
 from marketplace_policies_code.config import PaperConfig, ProjectPaths
 from marketplace_policies_code.figures import FigureRenderer
+from marketplace_policies_code.progress import ProgressLogger
 from marketplace_policies_code.repository import ArtifactRepository
 from marketplace_policies_code.results import ResultValidator
 
@@ -26,12 +27,16 @@ class PipelineResult:
 class PaperReproductionPipeline:
     """Publication-output pipeline that consumes generated analysis artifacts."""
 
-    def __init__(self, paths: ProjectPaths, config: PaperConfig | None = None) -> None:
+    def __init__(
+        self, paths: ProjectPaths, config: PaperConfig | None = None, progress: ProgressLogger | None = None
+    ) -> None:
         self.paths = paths
         self.config = config or PaperConfig()
+        self.progress = progress or ProgressLogger(enabled=False)
         self.repository = ArtifactRepository(paths)
 
     def validate_inputs(self) -> None:
+        self.progress.step("checking generated artifact layout")
         self.repository.require_layout()
         required_csv = [
             "final_policy_recommendation.csv",
@@ -42,24 +47,32 @@ class PaperReproductionPipeline:
         ]
         for name in required_csv:
             self.repository.csv_path(name)
+        self.progress.done(f"checking generated artifact layout; found {len(required_csv)} required CSV files")
 
     def render_figures(self) -> list[Path]:
-        renderer = FigureRenderer(self.repository, self.paths.figure_dir, self.config)
-        return renderer.render_all()
+        renderer = FigureRenderer(self.repository, self.paths.figure_dir, self.config, progress=self.progress)
+        figures = renderer.render_all()
+        self.progress.done(f"rendering figures; wrote {len(figures)} PNG files")
+        return figures
 
     def export_tables(self) -> list[Path]:
+        self.progress.step("exporting selected paper tables")
         copied = self.repository.copy_selected_tables(self.paths.exported_table_dir)
         index_path = self.paths.exported_table_dir / "table_index.csv"
         self.repository.selected_tables().to_csv(index_path, index=False)
+        self.progress.done(f"exporting selected paper tables; wrote {len(copied) + 1} CSV files")
         return [*copied, index_path]
 
     def validate_claims(self) -> list[Path]:
+        self.progress.step("validating headline decision claims")
         validator = ResultValidator(self.repository, self.config)
         validator.assert_all_pass()
         csv_path = validator.write_report(self.paths.report_dir)
+        self.progress.done("validating headline decision claims")
         return [csv_path, self.paths.report_dir / "claim_checks.md"]
 
     def write_result_summary(self) -> Path:
+        self.progress.step("writing result summary")
         final = self.repository.read_csv("final_policy_recommendation.csv").iloc[0]
         season3 = self.repository.read_csv("season3_priority_policy_validation.csv").iloc[0]
         ablation = self.repository.read_csv("decision_rule_ablation_summary.csv")
@@ -103,14 +116,16 @@ class PaperReproductionPipeline:
             ),
             encoding="utf-8",
         )
+        self.progress.done(f"writing result summary to {path}")
         return path
 
     def make_bundle(self) -> list[Path]:
-        """Create a GitHub/archival bundle of regenerated outputs."""
+        """Create an archival bundle of regenerated outputs."""
 
+        self.progress.step("creating archival bundle of regenerated outputs")
         bundle = self.paths.bundle_dir
         bundle.mkdir(parents=True, exist_ok=True)
-        copied = self.repository.copy_overleaf_sources(bundle / "paper")
+        copied: list[Path] = []
 
         regenerated_figures = bundle / "figures"
         regenerated_figures.mkdir(exist_ok=True)
@@ -131,6 +146,7 @@ class PaperReproductionPipeline:
                 destination = bundle / report.name
                 shutil.copy2(report, destination)
                 copied.append(destination)
+        self.progress.done(f"creating archival bundle; copied {len(copied)} files")
         return copied
 
     def run(
@@ -141,6 +157,7 @@ class PaperReproductionPipeline:
         validate_claims: bool = True,
         make_bundle: bool = True,
     ) -> PipelineResult:
+        self.progress.step("publication-output reproduction pipeline")
         self.paths.ensure_output_dirs()
         self.validate_inputs()
         figures = self.render_figures() if render_figures else []
@@ -151,7 +168,10 @@ class PaperReproductionPipeline:
         reports.append(self.write_result_summary())
         reports.append(self.paths.report_dir / "result_summary.md")
         bundle_files = self.make_bundle() if make_bundle else []
+        self.progress.step("writing artifact manifest")
         manifest = self.repository.write_manifest(self.paths.output_root)
+        self.progress.done(f"writing artifact manifest to {manifest}")
+        self.progress.done("publication-output reproduction pipeline")
         return PipelineResult(
             figures=figures, tables=tables, reports=reports, bundle_files=bundle_files, manifest=manifest
         )

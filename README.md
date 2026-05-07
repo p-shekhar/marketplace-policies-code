@@ -2,13 +2,14 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](pyproject.toml)
+[![Package manager](https://img.shields.io/badge/package%20manager-uv-5c4ee5.svg)](pyproject.toml)
 [![Reproduction](https://img.shields.io/badge/reproduction-raw--data--to--paper-16a34a.svg)](#reproducibility-boundary)
 
 This repository reproduces the empirical artifacts for the paper:
 
 **From Auction Replay to Launch Readiness: A Decision-Support Framework for Ads Marketplace Policies**
 
-The code is organized as a small, object-oriented Python package. It reads the original local iPinYou archive, rebuilds the bid-opportunity panels, runs the same nuisance-model and assumption-aware off-policy evaluation workflow developed in the project notebooks, regenerates the paper figures and result tables, validates the decision claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
+The code is organized as a small, object-oriented Python package. It reads the original local iPinYou archive, rebuilds the bid-opportunity panels, runs the nuisance-model and assumption-aware off-policy evaluation workflow used in the paper, regenerates the paper figures and result tables, validates the decision claims, and creates a clean reproduction bundle that can be archived with the paper or uploaded to GitHub.
 
 <p align="center">
   <img src="images/mermaid-diagram.png" alt="Marketplace policy reproduction architecture" width="70%">
@@ -22,9 +23,9 @@ The repo is built around one reproducibility contract: start from the original l
 | --- | --- | --- |
 | Raw data access | `IpinYouArchive` | Reads bz2 members inside the original iPinYou zip archive |
 | Panel construction | `OpportunityPanelBuilder` | Builds season-two and season-three bid-opportunity panels |
-| Nuisance modeling | `NuisanceModelTrainer` | Fits the Notebook 04 LightGBM prototype models and calibration diagnostics |
+| Nuisance modeling | `NuisanceModelTrainer` | Fits the LightGBM nuisance models and calibration diagnostics |
 | Policy replay | `ReservePolicyCatalog`, `PolicyReplayAnalyzer` | Replays non-decreasing reserve/floor policies |
-| Evidence synthesis | `DerivedEvidenceBuilder` | Runs the Notebook 08 simulated logger, HistGradientBoosting OPE, cross-fitted DR, bootstrap ranking, heterogeneity, validation, scorecards, theory, and ablations |
+| Evidence synthesis | `DerivedEvidenceBuilder` | Runs the simulated logger, HistGradientBoosting OPE, cross-fitted DR, bootstrap ranking, heterogeneity, validation, scorecards, theory, and ablations |
 | Figure generation | `FigureRenderer` | Rebuilds paper-facing diagnostic and validation figures |
 | Claim checks | `ResultValidator` | Verifies policy, lift, holdout, ablation, and action claims |
 | Full run | `RawToPaperPipeline`, `PaperReproductionPipeline` | Creates analysis artifacts, figures, tables, reports, manifest, and bundle |
@@ -66,6 +67,8 @@ marketplace-policies-code/
 
 ## Quick Start
 
+This repository assumes [`uv`](https://docs.astral.sh/uv/) is available for environment creation and package installation.
+
 Place the original iPinYou archive here:
 
 ```text
@@ -75,18 +78,18 @@ data/ipinyou/archive.zip
 From this folder:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-marketplace-policies reproduce --quick
+uv sync --extra dev
+uv run marketplace-policies reproduce --quick
 ```
 
 The quick run uses a bounded subset of days and rows so the pipeline can be tested on a laptop. It writes generated analysis artifacts to `artifacts/workspace/` and publication outputs to `artifacts/`.
 
+All commands print timestamped progress messages while they run, including the current pipeline stage, data shard, model, figure, and validation step. Add `--quiet` to suppress these messages.
+
 For paper-scale regeneration, run:
 
 ```bash
-marketplace-policies reproduce --full
+uv run marketplace-policies reproduce --full
 ```
 
 The full run reads every available season-two training day and the season-three validation window. It can take a long time and will create large local parquet files under `artifacts/workspace/data/processed/`.
@@ -106,45 +109,121 @@ scikit-learn
 lightgbm
 ```
 
-`scikit-learn` and `lightgbm` are required because the public repo mirrors the modeling work in the notebooks: Notebook 04 uses LightGBM nuisance models, and Notebook 08 uses `HistGradientBoostingRegressor` for the simulated-logger direct-method and doubly robust diagnostics. The Python `graphviz` package also needs the Graphviz `dot` executable available on the system path.
+`scikit-learn` and `lightgbm` are required for the paper reproduction pipeline: LightGBM fits the nuisance models, and `HistGradientBoostingRegressor` powers the simulated-logger direct-method and doubly robust diagnostics. The Python `graphviz` package also needs the Graphviz `dot` executable available on the system path.
+
+`uv sync --extra dev` installs the runtime and development dependencies declared in `pyproject.toml`.
 
 ## Commands
 
-Validate headline results only:
+All commands are exposed through the `marketplace-policies` CLI after `uv sync --extra dev`.
+
+| Command | Reads | Writes | Use when |
+| --- | --- | --- | --- |
+| `reproduce` | Raw iPinYou archive by default | Full `artifacts/workspace/` and `artifacts/` outputs | You want the complete raw-data-to-paper run |
+| `build-artifacts` | Raw iPinYou archive | Analysis artifacts under `artifacts/workspace/` | You only want to process raw data and stop before figures/tables/checks |
+| `figures` | Existing generated artifacts under `--source-root` | PNG figures under `artifacts/figures/` | You changed figure code or already have analysis artifacts |
+| `tables` | Existing generated artifacts under `--source-root` | Selected CSV tables under `artifacts/tables/` | You want the paper-facing result tables only |
+| `check` | Existing generated artifacts under `--source-root` | Claim-check reports under `artifacts/reports/` | You want to verify headline decision claims |
+
+### Full Reproduction
 
 ```bash
-marketplace-policies check --source-root artifacts/workspace
+uv run marketplace-policies reproduce --full
 ```
 
-Render figures only:
+This is the main paper-scale command. It expects `data/ipinyou/archive.zip`, builds the season-two development panel, fits nuisance models, replays reserve/floor policies, runs the simulated-logger OPE and cross-fitted DR diagnostics, validates the priority policy on season three, regenerates figures and tables, validates headline claims, and writes an archival bundle.
+
+Outputs:
+
+- `artifacts/workspace/metadata/`: intermediate and final analysis CSVs
+- `artifacts/workspace/tables/`: table-ready CSVs created during analysis
+- `artifacts/workspace/data/processed/`: generated parquet panels and samples
+- `artifacts/figures/`: regenerated PNG figures
+- `artifacts/tables/`: selected paper-facing tables
+- `artifacts/reports/`: claim checks and result summaries
+- `artifacts/bundle/`: compact bundle of regenerated outputs
+
+### Quick Smoke Test
 
 ```bash
-marketplace-policies figures --source-root artifacts/workspace
+uv run marketplace-policies reproduce --quick
 ```
 
-Export selected paper tables only:
+This runs the same pipeline shape as `--full`, but on a bounded subset of days and rows. Use it first after cloning to confirm that the archive path, Python environment, Graphviz installation, model dependencies, and output folders are all working.
+
+The quick run is useful for development checks, but it is not the final paper-scale reproduction.
+
+### Build Analysis Artifacts Only
 
 ```bash
-marketplace-policies tables --source-root artifacts/workspace
+uv run marketplace-policies build-artifacts --quick
 ```
 
-Build analysis artifacts from raw iPinYou data only:
+This reads the raw iPinYou archive and stops after generating the analysis workspace. It does not render figures, export selected tables, validate claim checks, or create the final bundle.
+
+Use this when you want to inspect or debug the data-processing and estimation artifacts before running the full publication-output stage. Switch to `--full` when you want the paper-scale analysis artifacts:
 
 ```bash
-marketplace-policies build-artifacts --quick
+uv run marketplace-policies build-artifacts --full
 ```
 
-Run the full raw-data-to-paper reproduction:
+### Reuse Existing Analysis Artifacts
 
 ```bash
-marketplace-policies reproduce --full
+uv run marketplace-policies reproduce --skip-analysis --source-root artifacts/workspace
 ```
+
+This skips raw-data processing and reuses an existing generated workspace. It is the fastest way to rerender figures, export selected tables, rerun claim checks, write summaries, and rebuild the output bundle after you have already run `build-artifacts` or a previous `reproduce` command.
+
+### Render Figures Only
+
+```bash
+uv run marketplace-policies figures --source-root artifacts/workspace
+```
+
+This reads generated CSV/parquet artifacts from `--source-root` and writes only the PNG figures to `artifacts/figures/`. It does not rebuild raw panels or refit models.
+
+Use this after changing plotting code, labels, colors, sizing, or figure selection.
+
+### Export Tables Only
+
+```bash
+uv run marketplace-policies tables --source-root artifacts/workspace
+```
+
+This reads `final_table_selection.csv` from the generated metadata and copies the selected paper-facing CSV tables into `artifacts/tables/`. It also writes a `table_index.csv` so the exported files can be matched back to their role in the paper.
+
+### Validate Headline Claims Only
+
+```bash
+uv run marketplace-policies check --source-root artifacts/workspace
+```
+
+This reads the final generated decision artifacts and verifies that the main manuscript claims are internally consistent. It checks the priority policy, the reader-facing policy name, the season-three validation result, the ablation result, and the final recommendation that the policy should go through online validation rather than direct launch.
+
+Outputs are written to `artifacts/reports/`.
 
 Equivalent script entry point:
 
 ```bash
-python scripts/reproduce_paper.py --quick
+uv run python scripts/reproduce_paper.py --quick
 ```
+
+The script is a convenience wrapper around the CLI. If no command is provided, it defaults to `reproduce`, so the command above is equivalent to:
+
+```bash
+uv run marketplace-policies reproduce --quick
+```
+
+### Shared Options
+
+- `--quick`: bounded smoke-test run for local verification.
+- `--full`: paper-scale run over all available season-two and season-three rows.
+- `--data-root`: folder containing `ipinyou/archive.zip`; defaults to `data`.
+- `--source-root`: generated analysis workspace; defaults to `artifacts/workspace`.
+- `--output-root`: publication-output folder; defaults to `artifacts`.
+- `--skip-analysis`: reuse existing generated artifacts instead of rebuilding from raw data.
+- `--quiet`: suppress timestamped progress messages.
 
 ## Expected Headline Checks
 
@@ -176,15 +255,15 @@ This code repository is released under the MIT License. See `LICENSE` for detail
 Run tests:
 
 ```bash
-pytest
+uv run pytest
 ```
 
 Lint:
 
 ```bash
-ruff check .
+uv run ruff check .
 ```
 
 ## Reproducibility Boundary
 
-The package is a raw-data-to-paper reproduction repo, not a repository of precomputed paper artifacts. A fresh clone can regenerate the analysis artifacts, figures, selected paper tables, checks, and reports after the user places the original iPinYou archive under `data/ipinyou/archive.zip`. The code path intentionally mirrors the project notebooks: raw panel construction, LightGBM nuisance-model diagnostics, reserve/floor replay, simulated known-propensity OPE, cross-fitted DR, conservative bootstrap ranking, season-three validation, decision-rule ablations, and final launch-readiness checks. The quick mode is for smoke testing; `--full` is the paper-scale run.
+The package is a raw-data-to-paper reproduction repo, not a repository of precomputed paper artifacts. A fresh clone can regenerate the analysis artifacts, figures, selected paper tables, checks, and reports after the user places the original iPinYou archive under `data/ipinyou/archive.zip`. The reproduction path covers raw panel construction, LightGBM nuisance-model diagnostics, reserve/floor replay, simulated known-propensity OPE, cross-fitted DR, conservative bootstrap ranking, season-three validation, decision-rule ablations, and final launch-readiness checks. The quick mode is for smoke testing; `--full` is the paper-scale run.

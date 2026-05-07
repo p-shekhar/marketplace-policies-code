@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from marketplace_policies_code.progress import ProgressLogger
+
 BID_COLUMNS = [
     "bid_id",
     "timestamp",
@@ -196,14 +198,22 @@ class OpportunityPanelBuilder:
     ]
     categorical_columns = ["region", "city", "ad_exchange", "advertiser_id", "slot_visibility", "slot_format"]
 
-    def __init__(self, archive: IpinYouArchive, workspace: Workspace, config: RawPipelineConfig) -> None:
+    def __init__(
+        self,
+        archive: IpinYouArchive,
+        workspace: Workspace,
+        config: RawPipelineConfig,
+        progress: ProgressLogger | None = None,
+    ) -> None:
         self.archive = archive
         self.workspace = workspace
         self.config = config
+        self.progress = progress or ProgressLogger(enabled=False)
         self.inventory = archive.inventory()
 
     def write_inventory(self) -> pd.DataFrame:
         self.inventory.to_csv(self.workspace.metadata_dir / "ipinyou_archive_inventory.csv", index=False)
+        self.progress.log(f"Archived file inventory found {len(self.inventory):,} members.")
         return self.inventory
 
     def _file_matrix(self, season: str) -> pd.DataFrame:
@@ -266,6 +276,8 @@ class OpportunityPanelBuilder:
         self, season: str, date_label: str, nrows: int | None = None
     ) -> tuple[pd.DataFrame, dict[str, object]]:
         start = time.time()
+        mode = "all rows" if nrows is None else f"up to {nrows:,} bid rows"
+        self.progress.log(f"Building {season} panel for date {date_label} ({mode}).")
         members = self._members_for(season, date_label)
         bid_df = self.archive.read_tsv(members["bid"], BID_COLUMNS, nrows=nrows).drop_duplicates("bid_id", keep="first")
         imp_labels = self.archive.read_tsv(
@@ -312,9 +324,15 @@ class OpportunityPanelBuilder:
             "fill_rate_in_panel": float(frame["filled"].mean()),
             "elapsed_seconds": round(time.time() - start, 2),
         }
+        self.progress.log(
+            f"Built {season} date {date_label}: {len(frame):,} opportunities, "
+            f"{int(frame['filled'].sum()):,} fills, {int(frame['clicked'].sum()):,} clicks "
+            f"in {manifest['elapsed_seconds']}s."
+        )
         return frame, manifest
 
     def build_season2(self) -> pd.DataFrame:
+        self.progress.step("season-two bid-opportunity panel construction")
         matrix = self._file_matrix("training2nd")
         dates = matrix.dropna(subset=["bid", "imp"])["date_label"].astype(str).tolist()
         if not self.config.full_run:
@@ -395,11 +413,14 @@ class OpportunityPanelBuilder:
                 "value_proxy_lambda_10",
             ]
         ].to_parquet(self.workspace.processed_dir / "ipinyou_nuisance_prototype_opportunity_panel.parquet", index=False)
+        self.progress.done(
+            f"season-two panel construction; {len(panel):,} opportunities across {len(dates):,} date(s)"
+        )
         return panel
 
 
 class NuisanceModelTrainer:
-    """Notebook 04 LightGBM nuisance-model prototype."""
+    """LightGBM nuisance-model prototype used by the paper pipeline."""
 
     categorical_features = [
         "region",
@@ -424,9 +445,10 @@ class NuisanceModelTrainer:
     ]
     feature_families = "time; geography; exchange; inventory; advertiser; bid_and_floor; user_tag_count"
 
-    def __init__(self, workspace: Workspace, config: RawPipelineConfig) -> None:
+    def __init__(self, workspace: Workspace, config: RawPipelineConfig, progress: ProgressLogger | None = None) -> None:
         self.workspace = workspace
         self.config = config
+        self.progress = progress or ProgressLogger(enabled=False)
 
     @property
     def feature_columns(self) -> list[str]:
@@ -629,6 +651,7 @@ class NuisanceModelTrainer:
         return record, predictions
 
     def run(self, panel: pd.DataFrame) -> None:
+        self.progress.step("LightGBM nuisance-model training and calibration")
         self.feature_label_contract()
         if len(panel) > self.config.nuisance_sample_rows:
             model_panel = panel.sample(
@@ -668,10 +691,14 @@ class NuisanceModelTrainer:
         records: list[dict[str, object]] = []
         prediction_frames: list[pd.DataFrame] = []
         for model_name, target, task_type, data, min_positive in model_specs:
+            self.progress.log(
+                f"Training nuisance model `{model_name}` for target `{target}` on {len(data):,} candidate rows."
+            )
             record, predictions = self._evaluate_model(model_name, target, task_type, data, min_positive)
             records.append(record)
             if predictions is not None:
                 prediction_frames.append(predictions)
+            self.progress.log(f"Model `{model_name}` status: {record.get('status', 'unknown')}.")
 
         metrics = pd.DataFrame(records)
         metrics.to_csv(self.workspace.metadata_dir / "prototype_model_metrics.csv", index=False)
@@ -756,6 +783,8 @@ class NuisanceModelTrainer:
         registry["prototype_note"] = registry["model_name"].map(reason_lookup).fillna("")
         registry.to_csv(self.workspace.metadata_dir / "nuisance_model_registry.csv", index=False)
         registry.to_csv(self.workspace.table_dir / "04_nuisance_model_registry.csv", index=False)
+        trained = int(metrics["status"].eq("trained").sum()) if "status" in metrics else 0
+        self.progress.done(f"LightGBM nuisance modeling; {trained}/{len(metrics)} models trained")
 
 
 class ReservePolicyCatalog:
@@ -902,9 +931,12 @@ class PolicyReplayAnalyzer:
         "advertiser_id",
     ]
 
-    def __init__(self, workspace: Workspace, catalog: ReservePolicyCatalog) -> None:
+    def __init__(
+        self, workspace: Workspace, catalog: ReservePolicyCatalog, progress: ProgressLogger | None = None
+    ) -> None:
         self.workspace = workspace
         self.catalog = catalog
+        self.progress = progress or ProgressLogger(enabled=False)
         self.registry = catalog.registry()
 
     @staticmethod
@@ -953,10 +985,13 @@ class PolicyReplayAnalyzer:
         }
 
     def evaluate(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        self.progress.step(f"auction replay for {len(self.registry):,} reserve/floor policies")
         self.registry.to_csv(self.workspace.metadata_dir / "reserve_policy_registry.csv", index=False)
         self.registry.to_csv(self.workspace.table_dir / "06_reserve_policy_registry.csv", index=False)
         daily_rows = []
-        for shard in sorted(self.workspace.season2_panel_dir.glob("season2_panel_*.parquet")):
+        shards = sorted(self.workspace.season2_panel_dir.glob("season2_panel_*.parquet"))
+        for shard_index, shard in enumerate(shards, start=1):
+            self.progress.log(f"Replaying policies on season-two shard {shard_index}/{len(shards)}: {shard.name}.")
             frame = pd.read_parquet(shard, columns=self.replay_columns)
             for policy_id in self.registry["policy_id"]:
                 row = self.replay_metrics(frame, policy_id)
@@ -1007,6 +1042,7 @@ class PolicyReplayAnalyzer:
         daily.to_csv(self.workspace.metadata_dir / "reserve_policy_daily_effects.csv", index=False)
         daily.to_csv(self.workspace.table_dir / "06_reserve_policy_daily_effects.csv", index=False)
         self._guardrails(effects, daily)
+        self.progress.done(f"auction replay; evaluated {len(effects):,} policies across {len(shards):,} shard(s)")
         return effects, daily
 
     def _guardrails(self, effects: pd.DataFrame, daily: pd.DataFrame) -> pd.DataFrame:
@@ -1094,10 +1130,17 @@ class PolicyReplayAnalyzer:
 class DerivedEvidenceBuilder:
     """Builds OPE-style diagnostics, validation, scorecards, and final decision artifacts."""
 
-    def __init__(self, workspace: Workspace, config: RawPipelineConfig, catalog: ReservePolicyCatalog) -> None:
+    def __init__(
+        self,
+        workspace: Workspace,
+        config: RawPipelineConfig,
+        catalog: ReservePolicyCatalog,
+        progress: ProgressLogger | None = None,
+    ) -> None:
         self.workspace = workspace
         self.config = config
         self.catalog = catalog
+        self.progress = progress or ProgressLogger(enabled=False)
         self.rng = np.random.default_rng(config.random_seed)
 
     def read(self, name: str) -> pd.DataFrame:
@@ -1138,6 +1181,7 @@ class DerivedEvidenceBuilder:
         )
 
     def build_experiment_design(self) -> None:
+        self.progress.step("experiment-design and validation-plan artifacts")
         candidates = self.read("reserve_policy_candidate_handoff.csv")
         selected = candidates.query(
             "recommended_next_step == 'send_to_ope_and_sensitivity' and policy_id != @BASELINE_POLICY_ID"
@@ -1224,6 +1268,7 @@ class DerivedEvidenceBuilder:
             ]
         )
         self.write(recommendations, "experiment_design_recommendations.csv", table=True)
+        self.progress.done(f"experiment-design artifacts; {len(rows):,} candidate validation row(s)")
 
     @staticmethod
     def _normal_ci(estimate: float, scores: np.ndarray) -> tuple[float, float, float]:
@@ -1265,8 +1310,10 @@ class DerivedEvidenceBuilder:
             "time_split",
         ]
         frames = []
+        self.progress.step(f"constructing OPE sample from {len(panel_manifest):,} season-two panel shard(s)")
         for shard_idx, row in panel_manifest.iterrows():
             shard_path = self.workspace.root / row["panel_artifact"]
+            self.progress.log(f"Sampling OPE rows from {Path(row['panel_artifact']).name}.")
             shard = pd.read_parquet(shard_path, columns=columns)
             shard["source_panel_artifact"] = row["panel_artifact"]
             if len(shard) > self.config.rows_per_day_for_ope_sample:
@@ -1288,9 +1335,11 @@ class DerivedEvidenceBuilder:
                 "mean_pay_price_per_opportunity": [panel["pay_price"].mean()],
             }
         ).to_csv(self.workspace.metadata_dir / "ope_sample_manifest.csv", index=False)
+        self.progress.done(f"OPE sample construction; materialized {len(panel):,} rows")
         return panel
 
     def build_ope_and_scorecard(self) -> pd.DataFrame:
+        self.progress.step("simulated-logger OPE, cross-fitted DR, ranking, and scorecard")
         from sklearn.ensemble import HistGradientBoostingRegressor
         from sklearn.metrics import mean_absolute_error, r2_score
         from sklearn.model_selection import KFold
@@ -1319,7 +1368,9 @@ class DerivedEvidenceBuilder:
         replay = effects[effects["policy_id"].isin(policy_ids)].copy()
         baseline_yield = float(replay.loc[replay["policy_id"].eq(BASELINE_POLICY_ID), "yield_per_opportunity"].iloc[0])
 
+        self.progress.log(f"Selected {len(policy_ids):,} policies for OPE diagnostics.")
         panel_sample = self._sample_ope_panel()
+        self.progress.log(f"Building policy floor and structural replay matrices for {len(panel_sample):,} OPE rows.")
         policy_floor_matrix = np.column_stack([self.catalog.floor(panel_sample, policy_id) for policy_id in policy_ids])
         filled = panel_sample["filled"].to_numpy(dtype=bool)
         bid_price = panel_sample["bid_price"].to_numpy(dtype=float)
@@ -1370,6 +1421,7 @@ class DerivedEvidenceBuilder:
         assigned_policy = np.array(policy_ids, dtype=object)[assigned_policy_idx]
         observed_simulated_yield = yield_matrix[np.arange(len(panel_sample)), assigned_policy_idx]
         logged_propensity = policy_probs[np.arange(len(panel_sample)), assigned_policy_idx]
+        self.progress.log("Simulated known-propensity policy logger assignments.")
         simulated_logger = (
             pd.DataFrame({"assigned_policy": assigned_policy, "logged_propensity": logged_propensity})
             .groupby("assigned_policy")
@@ -1434,6 +1486,9 @@ class DerivedEvidenceBuilder:
             l2_regularization=0.05,
             random_state=self.config.random_seed,
         )
+        self.progress.log(
+            f"Fitting simulated-logger outcome model on {train_n:,} rows; evaluating on {eval_n:,} rows."
+        )
         outcome_model.fit(
             build_model_matrix(train_idx, assigned_policy_idx[train_idx]), observed_simulated_yield[train_idx]
         )
@@ -1497,6 +1552,7 @@ class DerivedEvidenceBuilder:
         )
 
         ope_rows = []
+        self.progress.log("Computing structural, direct-method, IPS, SNIPS, and doubly robust policy estimates.")
         for j, policy_id in enumerate(policy_ids):
             mu_target = np.clip(
                 outcome_model.predict(build_model_matrix(eval_idx, np.full(eval_n, j, dtype=int))), 0.0, None
@@ -1523,7 +1579,7 @@ class DerivedEvidenceBuilder:
             for estimator, assumption_id, evidence_role, estimate, se, low, high in [
                 (
                     "sample_structural_replay",
-                    "simulated_policy_logger_in_this_notebook",
+                    "simulated_policy_logger_in_reproduction_pipeline",
                     "diagnostic_ground_truth_for_sample",
                     structural_estimate,
                     structural_se,
@@ -1532,7 +1588,7 @@ class DerivedEvidenceBuilder:
                 ),
                 (
                     "direct_method",
-                    "simulated_policy_logger_in_this_notebook",
+                    "simulated_policy_logger_in_reproduction_pipeline",
                     "model_based_diagnostic",
                     dm_estimate,
                     dm_se,
@@ -1541,7 +1597,7 @@ class DerivedEvidenceBuilder:
                 ),
                 (
                     "ips",
-                    "simulated_policy_logger_in_this_notebook",
+                    "simulated_policy_logger_in_reproduction_pipeline",
                     "valid_only_under_known_simulated_propensity",
                     ips_estimate,
                     ips_se,
@@ -1550,7 +1606,7 @@ class DerivedEvidenceBuilder:
                 ),
                 (
                     "snips",
-                    "simulated_policy_logger_in_this_notebook",
+                    "simulated_policy_logger_in_reproduction_pipeline",
                     "stabilized_known_propensity_diagnostic",
                     snips_estimate,
                     snips_se,
@@ -1559,7 +1615,7 @@ class DerivedEvidenceBuilder:
                 ),
                 (
                     "doubly_robust",
-                    "simulated_policy_logger_in_this_notebook",
+                    "simulated_policy_logger_in_reproduction_pipeline",
                     "preferred_known_propensity_diagnostic",
                     dr_estimate,
                     dr_se,
@@ -1732,6 +1788,10 @@ class DerivedEvidenceBuilder:
         self.write(clip_df, "ope_clipping_sensitivity.csv")
 
         advanced_rows = min(self.config.advanced_cf_rows, len(panel_sample))
+        self.progress.log(
+            f"Running cross-fitted DR analysis on {advanced_rows:,} rows with "
+            f"{self.config.advanced_bootstraps:,} cluster bootstrap iterations."
+        )
         advanced_rng = np.random.default_rng(self.config.random_seed + 8808)
         advanced_idx = np.sort(advanced_rng.choice(len(panel_sample), size=advanced_rows, replace=False))
         advanced_assigned = assigned_policy_idx[advanced_idx]
@@ -1742,6 +1802,7 @@ class DerivedEvidenceBuilder:
         fold_diagnostics = []
         kf = KFold(n_splits=3, shuffle=True, random_state=self.config.random_seed + 88)
         for fold_id, (train_pos, test_pos) in enumerate(kf.split(advanced_idx), start=1):
+            self.progress.log(f"Training cross-fit DR fold {fold_id}/3.")
             train_global_idx = advanced_idx[train_pos]
             test_global_idx = advanced_idx[test_pos]
             model = HistGradientBoostingRegressor(
@@ -1845,6 +1906,7 @@ class DerivedEvidenceBuilder:
         bootstrap_lifts = np.zeros((self.config.advanced_bootstraps, len(policy_ids)))
         bootstrap_structural_lifts = np.zeros((self.config.advanced_bootstraps, len(policy_ids)))
         baseline_index = policy_ids.index(BASELINE_POLICY_ID)
+        self.progress.log(f"Bootstrapping conservative policy ranking across {n_clusters:,} exchange-hour clusters.")
         for bootstrap_id in range(self.config.advanced_bootstraps):
             sampled_clusters = bootstrap_rng.integers(0, n_clusters, size=n_clusters)
             sampled_count = cluster_counts[sampled_clusters].sum()
@@ -2237,9 +2299,12 @@ class DerivedEvidenceBuilder:
             ]
         ].copy()
         comparison.to_csv(self.workspace.metadata_dir / "conservative_ranking_comparison.csv", index=False)
+        top_policy = scorecard.iloc[0]["policy_id"] if not scorecard.empty else "none"
+        self.progress.done(f"OPE, ranking, and scorecard; top policy is `{top_policy}`")
         return scorecard
 
     def build_theory_and_sensitivity(self, scorecard: pd.DataFrame) -> None:
+        self.progress.step("theory, sensitivity, and launch-readiness artifacts")
         best = scorecard.iloc[0]
         grid = np.linspace(0, 0.60, 25)
         response = pd.DataFrame({"response_loss_share": grid})
@@ -2308,8 +2373,10 @@ class DerivedEvidenceBuilder:
             ]
         )
         self.write(registry, "formal_theory_proposition_registry.csv", table=True)
+        self.progress.done("theory, sensitivity, and launch-readiness artifacts")
 
     def build_season3_validation(self, builder: OpportunityPanelBuilder, catalog: ReservePolicyCatalog) -> None:
+        self.progress.step("season-three out-of-time validation replay")
         matrix = builder._file_matrix("training3rd")
         dates = matrix.dropna(subset=["bid", "imp"])["date_label"].astype(str).tolist()
         if not self.config.full_run:
@@ -2318,9 +2385,10 @@ class DerivedEvidenceBuilder:
         matrix.to_csv(self.workspace.metadata_dir / "season3_file_matrix.csv", index=False)
         nrows = None if self.config.full_run else self.config.season3_rows_per_day_quick
         registry = catalog.registry()
-        analyzer = PolicyReplayAnalyzer(self.workspace, catalog)
+        analyzer = PolicyReplayAnalyzer(self.workspace, catalog, progress=self.progress)
         daily_rows = []
         for date in dates:
+            self.progress.log(f"Validating policies on season-three date {date}.")
             frame, _ = builder.build_day_panel("training3rd", date, nrows=nrows)
             for policy_id in registry["policy_id"]:
                 row = analyzer.replay_metrics(frame, policy_id)
@@ -2392,8 +2460,10 @@ class DerivedEvidenceBuilder:
         priority["passes_top_rank_guardrail"] = priority["season3_rank"] <= 3
         priority["validation_verdict"] = "passes_external_replay_validation"
         priority.to_csv(self.workspace.metadata_dir / "season3_priority_policy_validation.csv", index=False)
+        self.progress.done(f"season-three validation replay; evaluated {len(dates):,} date(s)")
 
     def build_final_decision_and_ablation(self) -> None:
+        self.progress.step("final decision and ablation artifacts")
         scorecard = self.read("marketplace_scorecard.csv")
         season3 = self.read("season3_priority_policy_validation.csv")
         best = scorecard.iloc[0]
@@ -2607,8 +2677,10 @@ class DerivedEvidenceBuilder:
                     }
                 )
         self.write(pd.DataFrame(boot), "decision_rule_bootstrap_selection.csv")
+        self.progress.done(f"final decision and ablation artifacts; wrote {len(ablation):,} rule comparisons")
 
     def build_static_tables(self) -> None:
+        self.progress.step("static table and figure-selection catalogs")
         logging_contract = pd.DataFrame(
             [
                 {"field": "bid_id", "role": "join key", "needed_for": "event reconciliation"},
@@ -2718,22 +2790,28 @@ class DerivedEvidenceBuilder:
             "relative_path",
         ]
         self.write(table_selection, "final_table_selection.csv")
+        self.progress.done("static table and figure-selection catalogs")
 
 
 class RawToPaperPipeline:
     """Full raw-data analysis pipeline used before figure/table rendering."""
 
-    def __init__(self, config: RawPipelineConfig) -> None:
+    def __init__(self, config: RawPipelineConfig, progress: ProgressLogger | None = None) -> None:
         self.config = config
+        self.progress = progress or ProgressLogger(enabled=False)
         self.workspace = Workspace(config.workspace_root.expanduser().resolve())
 
     def run(self) -> Path:
+        mode = "full" if self.config.full_run else "quick"
+        self.progress.step(f"raw-data analysis pipeline ({mode} mode)")
         self.workspace.prepare(clean=self.config.clean_workspace)
         archive = IpinYouArchive(self.config.archive_path)
-        builder = OpportunityPanelBuilder(archive, self.workspace, self.config)
+        self.progress.log(f"Using iPinYou archive at {self.config.archive_path}.")
+        builder = OpportunityPanelBuilder(archive, self.workspace, self.config, progress=self.progress)
         builder.write_inventory()
         panel = builder.build_season2()
 
+        self.progress.step("reserve/floor price landscape and policy catalog")
         positive_floors = panel.loc[panel["slot_floor_price"].gt(0), "slot_floor_price"]
         quantiles = positive_floors.quantile([0.25, 0.50, 0.75]).to_dict()
         price_summary = pd.DataFrame(
@@ -2747,12 +2825,16 @@ class RawToPaperPipeline:
         )
         price_summary.to_csv(self.workspace.metadata_dir / "reserve_policy_price_landscape.csv", index=False)
         catalog = ReservePolicyCatalog({"q25": quantiles[0.25], "q50": quantiles[0.50], "q75": quantiles[0.75]})
-        replay = PolicyReplayAnalyzer(self.workspace, catalog)
+        self.progress.done(
+            "reserve/floor price landscape; "
+            f"q25={quantiles[0.25]:.2f}, q50={quantiles[0.50]:.2f}, q75={quantiles[0.75]:.2f}"
+        )
+        replay = PolicyReplayAnalyzer(self.workspace, catalog, progress=self.progress)
         replay.evaluate()
 
-        NuisanceModelTrainer(self.workspace, self.config).run(panel)
+        NuisanceModelTrainer(self.workspace, self.config, progress=self.progress).run(panel)
 
-        derived = DerivedEvidenceBuilder(self.workspace, self.config, catalog)
+        derived = DerivedEvidenceBuilder(self.workspace, self.config, catalog, progress=self.progress)
         derived.build_experiment_design()
         scorecard = derived.build_ope_and_scorecard()
         derived.build_experiment_design()
@@ -2761,6 +2843,7 @@ class RawToPaperPipeline:
         derived.build_final_decision_and_ablation()
         derived.build_static_tables()
 
+        self.progress.step("writing raw-data analysis manifest")
         manifest = pd.DataFrame(
             [
                 {
@@ -2772,4 +2855,6 @@ class RawToPaperPipeline:
             ]
         )
         manifest.to_csv(self.workspace.metadata_dir / "raw_reproduction_manifest.csv", index=False)
+        self.progress.done(f"raw-data analysis manifest; indexed {len(manifest):,} generated files")
+        self.progress.done(f"raw-data analysis pipeline ({mode} mode)")
         return self.workspace.root
