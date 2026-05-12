@@ -19,11 +19,16 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .pyre/
-.ipynb_checkpoints/
 .cache/
 .coverage
 .coverage.*
 htmlcov/
+
+# Jupyter runtime/cache files. Notebooks themselves are intentionally tracked
+# with outputs displayed.
+.jupyter/
+.ipynb_checkpoints/
+*.nbconvert.ipynb
 
 # Packaging/build outputs
 /build/

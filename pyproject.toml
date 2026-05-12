@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "marketplace-policies-code"
 version = "0.1.0"
-description = "Reproducible decision-support pipeline for ads marketplace reserve/floor-policy experiments."
+description = "Notebook-first reproduction code for ads marketplace reserve/floor-policy decision support."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -38,20 +38,32 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.6",
 ]
+notebooks = [
+  "ipykernel>=6.29",
+  "jupyterlab>=4.2",
+]
 
 [project.scripts]
 marketplace-policies = "cli:main"
 
 [tool.hatch.build.targets.wheel]
 only-include = [
+  "src/auction_replay.py",
+  "src/checks.py",
   "src/cli.py",
   "src/config.py",
+  "src/data_access.py",
+  "src/decision_engine.py",
+  "src/external_validation.py",
   "src/figures.py",
-  "src/pipeline.py",
+  "src/guardrails.py",
+  "src/nuisance_models.py",
+  "src/ope.py",
+  "src/panel_builder.py",
+  "src/paper_tables.py",
+  "src/policy_catalog.py",
   "src/progress.py",
-  "src/raw_pipeline.py",
-  "src/repository.py",
-  "src/results.py",
+  "src/theory_sensitivity.py",
 ]
 sources = ["src"]
 

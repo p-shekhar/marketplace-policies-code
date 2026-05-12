@@ -68,3 +68,36 @@ class ProjectPaths:
     def ensure_output_dirs(self) -> None:
         for folder in [self.output_root, self.figure_dir, self.exported_table_dir, self.report_dir, self.bundle_dir]:
             folder.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass(frozen=True)
+class RawPipelineConfig:
+    """Configuration for raw iPinYou-to-paper reproduction."""
+
+    data_root: Path = Path("data")
+    workspace_root: Path = Path("artifacts/workspace")
+    full_run: bool = False
+    season2_rows_per_day_quick: int = 200_000
+    season3_rows_per_day_quick: int = 250_000
+    quick_season2_dates: int = 2
+    quick_season3_dates: int = 3
+    nuisance_sample_rows: int = 250_000
+    rows_per_day_for_ope_sample: int = 100_000
+    max_model_train_rows: int = 250_000
+    max_model_eval_rows: int = 300_000
+    advanced_cf_rows: int = 240_000
+    advanced_bootstraps: int = 300
+    random_seed: int = 20260505
+    clean_workspace: bool = True
+
+    @property
+    def archive_path(self) -> Path:
+        candidates = [
+            self.data_root / "ipinyou" / "archive.zip",
+            self.data_root / "archive.zip",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+

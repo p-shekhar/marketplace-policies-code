@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+from checks import ArtifactRepository
 from config import PaperConfig
 from progress import ProgressLogger
-from repository import ArtifactRepository
 
 PALETTE = {
     "navy": "#1f4e79",
@@ -330,9 +330,31 @@ class FigureRenderer:
         ax2.spines["top"].set_visible(False)
         return self.save(fig, "05_outcome_density_by_day.png")
 
-    def plot_calibration(self) -> Path:
-        df = self.repository.read_csv("prototype_calibration_summary.csv").copy()
-        fig, ax = plt.subplots(figsize=(5.8, 4.4))
+    @staticmethod
+    def model_label(model_name: str) -> str:
+        return {
+            "fill_probability_model": "Fill",
+            "ctr_model": "CTR",
+            "pay_price_model": "Pay price",
+            "value_proxy_model": "Value proxy",
+        }.get(model_name, model_name.replace("_", " "))
+
+    @staticmethod
+    def add_panel_label(ax: plt.Axes, label: str) -> None:
+        ax.text(
+            0.02,
+            0.96,
+            label,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=11,
+            fontweight="bold",
+            color=PALETTE["ink"],
+            bbox={"boxstyle": "round,pad=0.22", "facecolor": "white", "edgecolor": "none", "alpha": 0.88},
+        )
+
+    def _draw_probability_calibration(self, ax: plt.Axes, df: pd.DataFrame, panel_label: str | None = None) -> None:
         if "model_name" in df.columns and not df.empty:
             for idx, (model_name, model_df) in enumerate(df.groupby("model_name", sort=False)):
                 color = [PALETTE["navy"], PALETTE["coral"], PALETTE["teal"], PALETTE["purple"]][idx % 4]
@@ -341,39 +363,114 @@ class FigureRenderer:
                     model_df["observed_rate"],
                     marker="o",
                     linewidth=1.8,
-                    label=model_name,
+                    label=self.model_label(model_name),
                     color=color,
                 )
             max_rate = max(df["predicted_rate"].max(), df["observed_rate"].max())
+            max_rate = max(max_rate, 1e-6)
             ax.plot(
                 [0, max_rate],
                 [0, max_rate],
                 linestyle="--",
                 color=PALETTE["slate"],
                 linewidth=1.2,
-                label="Perfect calibration",
+                label="45-degree",
             )
-            ax.set_xlabel("Mean predicted probability")
-            ax.set_ylabel("Observed outcome rate")
+            ax.set_xlabel("Predicted probability")
+            ax.set_ylabel("Observed rate")
         else:
             df["bin"] = np.arange(1, len(df) + 1)
             ax.plot(
                 df["bin"], df["predicted_rate"], marker="o", linewidth=2.2, label="Predicted", color=PALETTE["navy"]
             )
             ax.plot(df["bin"], df["observed_rate"], marker="s", linewidth=2.2, label="Observed", color=PALETTE["coral"])
-            ax.set_xlabel("Predicted-probability bin")
+            ax.set_xlabel("Probability bin")
             ax.set_ylabel("Rate")
-        ax.legend(loc="best")
+        if panel_label:
+            self.add_panel_label(ax, panel_label)
+        ax.tick_params(axis="both", labelsize=9.2)
+        ax.legend(loc="lower right", fontsize=8.6)
         self.clean_axis(ax)
-        return self.save(fig, "04_nuisance_model_calibration.png")
+
+    def _draw_regression_calibration(
+        self, ax: plt.Axes, df: pd.DataFrame, model_name: str, panel_label: str | None = None
+    ) -> None:
+        model_df = df.loc[df["model_name"].eq(model_name)].copy()
+        if model_df.empty:
+            ax.text(0.5, 0.5, f"No {self.model_label(model_name)} model", ha="center", va="center", fontsize=10)
+            ax.set_axis_off()
+            return
+
+        color = PALETTE["teal"] if model_name == "pay_price_model" else PALETTE["purple"]
+        ax.plot(
+            model_df["predicted_mean"],
+            model_df["observed_mean"],
+            marker="o",
+            linewidth=1.8,
+            color=color,
+        )
+        lo = min(model_df["predicted_mean"].min(), model_df["observed_mean"].min())
+        hi = max(model_df["predicted_mean"].max(), model_df["observed_mean"].max())
+        if np.isclose(lo, hi):
+            padding = 1.0 if np.isclose(hi, 0.0) else abs(hi) * 0.05
+            lo -= padding
+            hi += padding
+        ax.plot([lo, hi], [lo, hi], linestyle="--", color=PALETTE["slate"], linewidth=1.2)
+        ax.set_xlabel("Predicted mean")
+        ax.set_ylabel("Observed mean")
+        if abs(hi) < 0.1:
+            ax.ticklabel_format(axis="both", style="sci", scilimits=(-2, 2))
+        if panel_label:
+            self.add_panel_label(ax, panel_label)
+        ax.tick_params(axis="both", labelsize=9.2)
+        self.clean_axis(ax)
+
+    def plot_calibration(self, filename: str = "04_nuisance_model_calibration.png") -> Path:
+        probability_df = self.repository.read_csv("prototype_calibration_summary.csv").copy()
+        regression_df = self.repository.read_csv("prototype_regression_calibration_summary.csv").copy()
+        fig, axes = plt.subplots(1, 3, figsize=(13.8, 4.2), squeeze=False)
+        ax_probability, ax_pay, ax_value = axes.ravel()
+        self._draw_probability_calibration(ax_probability, probability_df, "(a) Probability")
+        self._draw_regression_calibration(ax_pay, regression_df, "pay_price_model", "(b) Pay price")
+        self._draw_regression_calibration(ax_value, regression_df, "value_proxy_model", "(c) Value proxy")
+        fig.subplots_adjust(wspace=0.33)
+        return self.save(fig, filename)
+
+    def plot_probability_calibration(self) -> Path:
+        df = self.repository.read_csv("prototype_calibration_summary.csv").copy()
+        fig, ax = plt.subplots(figsize=(5.8, 4.4))
+        self._draw_probability_calibration(ax, df)
+        return self.save(fig, "04a_nuisance_probability_calibration.png")
+
+    def plot_regression_calibration(self) -> Path:
+        df = self.repository.read_csv("prototype_regression_calibration_summary.csv").copy()
+        if df.empty:
+            fig, ax = plt.subplots(figsize=(5.8, 4.4))
+            ax.text(0.5, 0.5, "No trained regression models", ha="center", va="center")
+            ax.set_axis_off()
+            return self.save(fig, "04b_nuisance_regression_calibration.png")
+
+        model_order = [model for model in ["pay_price_model", "value_proxy_model"] if model in set(df["model_name"])]
+        model_order += [model for model in df["model_name"].drop_duplicates() if model not in set(model_order)]
+        n_models = len(model_order)
+        fig, axes = plt.subplots(1, n_models, figsize=(5.6 * n_models, 4.4), squeeze=False)
+        axes_flat = axes.ravel()
+        for idx, model_name in enumerate(model_order):
+            ax = axes_flat[idx]
+            self._draw_regression_calibration(ax, df, model_name)
+        return self.save(fig, "04b_nuisance_regression_calibration.png")
 
     def plot_frontier(self) -> Path:
-        df = self.repository.read_csv("marketplace_scorecard.csv").sort_values(
-            "weighted_evidence_score", ascending=False
+        df = self.repository.read_csv("reserve_policy_guardrails.csv").sort_values(
+            "pct_delta_yield_per_opportunity_vs_baseline", ascending=False
         )
+        if "floor_changed_share" not in df.columns:
+            df["floor_changed_share"] = np.nan
+        if "guardrails_passed" not in df.columns:
+            df["guardrails_passed"] = 0
         fig, ax = plt.subplots(figsize=(8.1, 5.0))
         colors = np.where(df["policy_id"].eq(self.config.priority_policy_id), PALETTE["red"], PALETTE["blue"])
-        sizes = 100 + 90 * df["weighted_evidence_score"]
+        sizes = 70 + 28 * df["guardrails_passed"].fillna(0)
         ax.scatter(
             df["floor_changed_share"] * 100,
             df["pct_delta_yield_per_opportunity_vs_baseline"] * 100,
@@ -383,22 +480,32 @@ class FigureRenderer:
             linewidths=0.8,
             alpha=0.92,
         )
+        label_gap = 11
         for policy_id, offset in {
-            self.config.priority_policy_id: (-72, 8),
-            "min_positive_floor_q75": (8, -5),
-            "hybrid_q50_if_gap_50": (8, 8),
-            "add_20_all_floors": (-84, -16),
+            self.config.priority_policy_id: (-label_gap, label_gap),
+            "min_positive_floor_q75": (label_gap, label_gap),
+            "hybrid_q50_if_gap_50": (label_gap, -label_gap),
+            "add_20_all_floors": (-label_gap, -label_gap),
         }.items():
             row = df[df["policy_id"].eq(policy_id)]
             if not row.empty:
                 point = row.iloc[0]
+                ha = "left" if offset[0] > 0 else "right"
+                va = "bottom" if offset[1] > 0 else "top"
                 ax.annotate(
                     policy_label(policy_id),
                     (point.floor_changed_share * 100, point.pct_delta_yield_per_opportunity_vs_baseline * 100),
                     xytext=offset,
                     textcoords="offset points",
                     fontsize=8.3,
-                    ha="left" if offset[0] >= 0 else "right",
+                    ha=ha,
+                    va=va,
+                    bbox={
+                        "boxstyle": "round,pad=0.16",
+                        "facecolor": "white",
+                        "edgecolor": "none",
+                        "alpha": 0.82,
+                    },
                 )
         ax.axhline(0, color=PALETTE["slate"], linewidth=1)
         ax.set_xlabel("Floor-changed opportunity share (%)")
@@ -406,12 +513,59 @@ class FigureRenderer:
         self.clean_axis(ax)
         return self.save(fig, "06_reserve_policy_tradeoff_frontier.png")
 
+    def plot_guardrail_matrix(self) -> Path:
+        matrix = self.repository.read_csv("reserve_policy_guardrail_matrix.csv")
+        ordering = self.repository.read_csv("reserve_policy_guardrails.csv")
+        ordering = ordering[ordering["policy_id"].ne("logged_floor_status_quo")].sort_values(
+            ["eligible_for_deeper_analysis", "pct_delta_yield_per_opportunity_vs_baseline"],
+            ascending=[False, False],
+        )
+        policy_order = ordering["policy_id"].tolist()
+        guardrail_order = (
+            matrix[["guardrail_order", "guardrail_id", "guardrail_label"]]
+            .drop_duplicates()
+            .sort_values("guardrail_order")
+        )
+        matrix = matrix[matrix["policy_id"].isin(policy_order)].copy()
+        pivot = (
+            matrix.pivot(index="policy_id", columns="guardrail_id", values="passed")
+            .reindex(index=policy_order, columns=guardrail_order["guardrail_id"])
+            .fillna(False)
+            .astype(int)
+        )
+        annotations = pivot.replace({1: "Pass", 0: "Fail"})
+        fig_height = max(5.8, 0.36 * len(policy_order) + 1.8)
+        fig, ax = plt.subplots(figsize=(10.7, fig_height))
+        cmap = mpl.colors.ListedColormap([PALETTE["light_red"], PALETTE["light_green"]])
+        sns.heatmap(
+            pivot,
+            cmap=cmap,
+            vmin=0,
+            vmax=1,
+            cbar=False,
+            linewidths=0.7,
+            linecolor="white",
+            annot=annotations,
+            fmt="",
+            annot_kws={"fontsize": 7.4, "color": PALETTE["ink"]},
+            ax=ax,
+        )
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_xticklabels(guardrail_order["guardrail_label"], rotation=34, ha="right", fontsize=8.4)
+        ax.set_yticklabels([policy_label(policy_id) for policy_id in policy_order], rotation=0, fontsize=8.6)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        return self.save(fig, "06_guardrail_policy_matrix.png")
+
     def plot_daily_stability(self) -> Path:
         daily = self.repository.read_csv("reserve_policy_daily_effects.csv")
+        try:
+            shortlist = self.repository.read_csv("reserve_policy_shortlist.csv")
+        except FileNotFoundError:
+            shortlist = self.repository.read_csv("reserve_policy_guardrails.csv").query("policy_id != 'logged_floor_status_quo'")
         shortlist = (
-            self.repository.read_csv("marketplace_scorecard.csv")
-            .sort_values("weighted_evidence_score", ascending=False)["policy_id"]
-            .head(4)
+            shortlist.sort_values("pct_delta_yield_per_opportunity_vs_baseline", ascending=False)["policy_id"].head(4)
         )
         daily = daily[daily["policy_id"].isin(shortlist)].copy()
         daily["event_date"] = pd.to_datetime(daily["event_date"])
@@ -622,6 +776,65 @@ class FigureRenderer:
         self.clean_axis(ax)
         return self.save(fig, "11_launch_readiness_checklist.png")
 
+    def plot_validation_design_and_launch_readiness(self) -> Path:
+        mde = self.repository.read_csv("validation_design_detectability.csv").copy()
+        mde["design"] = mde["design_id"].str.replace("_", " ").str.title()
+        checklist = self.repository.read_csv("launch_readiness_checklist.csv")
+        checklist["status_order"] = checklist["status"].map({"ready": 2, "validation_ready": 1, "blocked": 0})
+        checklist = checklist.sort_values("status_order")
+        colors = checklist["status"].map(
+            {"ready": PALETTE["teal"], "validation_ready": PALETTE["gold"], "blocked": PALETTE["coral"]}
+        )
+
+        fig, axes = plt.subplots(1, 2, figsize=(13.4, 4.9), gridspec_kw={"width_ratios": [1.16, 1.0]})
+        ax_mde, ax_launch = axes
+        sns.lineplot(
+            data=mde,
+            x="experiment_days",
+            y=mde["mde_yield_per_opportunity_pct_of_baseline"] * 100,
+            hue="design",
+            marker="o",
+            linewidth=2.0,
+            ax=ax_mde,
+        )
+        replay = mde["priority_replay_lift"].iloc[0] * 100
+        p10 = mde["priority_p10_dr_lift"].iloc[0] * 100
+        ax_mde.axhline(replay, color=PALETTE["teal"], linestyle="--", linewidth=1.4, label="Replay lift")
+        ax_mde.axhline(p10, color=PALETTE["red"], linestyle="--", linewidth=1.4, label="P10 DR lift")
+        ax_mde.set_xlabel("Experiment days")
+        ax_mde.set_ylabel("MDE, percent of baseline yield")
+        ax_mde.legend(title=None, fontsize=7.5, loc="upper right")
+        ax_mde.text(
+            0.0,
+            1.04,
+            "(a) Validation detectability",
+            transform=ax_mde.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=11.5,
+            fontweight="bold",
+        )
+        self.clean_axis(ax_mde)
+
+        ax_launch.barh(checklist["gate"], checklist["status_score"], color=colors, edgecolor=PALETTE["ink"], linewidth=0.6)
+        ax_launch.set_xlim(0, 2.25)
+        ax_launch.set_xticks([0, 1, 2])
+        ax_launch.set_xticklabels(["Blocked", "Validate", "Ready"])
+        ax_launch.set_xlabel("Gate status")
+        ax_launch.text(
+            0.0,
+            1.04,
+            "(b) Launch-readiness gates",
+            transform=ax_launch.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=11.5,
+            fontweight="bold",
+        )
+        self.clean_axis(ax_launch)
+        fig.subplots_adjust(wspace=0.42)
+        return self.save(fig, "11_validation_design_and_launch_readiness.png")
+
     def plot_scorecard_components(self) -> Path:
         df = self.repository.read_csv("marketplace_scorecard.csv").sort_values(
             "weighted_evidence_score", ascending=False
@@ -687,6 +900,33 @@ class FigureRenderer:
         self.clean_axis(ax)
         return self.save(fig, "07_design_mde_curves.png")
 
+    def plot_decision_waterfall_and_validation_sequence(self) -> Path:
+        decision_path = self.render_decision_waterfall()
+        sequence_path = self.render_validation_sequence()
+        decision_img = plt.imread(decision_path)
+        sequence_img = plt.imread(sequence_path)
+        fig, axes = plt.subplots(1, 2, figsize=(13.6, 5.7))
+        for ax, img, label in zip(
+            axes,
+            [decision_img, sequence_img],
+            ["(a) Decision waterfall", "(b) Validation sequence"],
+            strict=False,
+        ):
+            ax.imshow(img)
+            ax.set_axis_off()
+            ax.text(
+                0.0,
+                1.03,
+                label,
+                transform=ax.transAxes,
+                ha="left",
+                va="bottom",
+                fontsize=11.5,
+                fontweight="bold",
+            )
+        fig.subplots_adjust(wspace=0.04)
+        return self.save(fig, "11_decision_waterfall_and_validation_sequence.png")
+
     def plot_season3_transfer(self) -> Path:
         df = self.repository.read_csv("season2_vs_season3_policy_transfer.csv")
         df["highlight"] = np.where(
@@ -728,6 +968,30 @@ class FigureRenderer:
         ax.legend(loc="best", frameon=True, fontsize=8.5)
         self.clean_axis(ax)
         return self.save(fig, "13_season2_vs_season3_transfer.png")
+
+    def plot_season2_vs_season3_distribution(self) -> Path:
+        summary = self.repository.read_csv("season2_vs_season3_distribution_summary.csv").copy()
+        summary["opportunities_millions"] = summary["bid_opportunities"] / 1_000_000
+        summary["mean_daily_opportunities_millions"] = summary["mean_daily_opportunities"] / 1_000_000
+        fig, axes = plt.subplots(1, 3, figsize=(12.2, 4.2))
+        sns.barplot(data=summary, x="season", y="opportunities_millions", color=PALETTE["blue"], ax=axes[0])
+        sns.barplot(data=summary, x="season", y="fill_rate", color=PALETTE["teal"], ax=axes[1])
+        sns.barplot(
+            data=summary,
+            x="season",
+            y="mean_daily_opportunities_millions",
+            color=PALETTE["gold"],
+            ax=axes[2],
+        )
+        axes[0].set_ylabel("Total opportunities (millions)")
+        axes[1].set_ylabel("Fill rate")
+        axes[2].set_ylabel("Mean daily opportunities (millions)")
+        for ax in axes:
+            ax.set_xlabel("")
+            self.clean_axis(ax)
+        axes[1].yaxis.set_major_formatter(lambda y, _: f"{y:.0%}")
+        fig.subplots_adjust(wspace=0.35)
+        return self.save(fig, "13_season2_vs_season3_distribution.png")
 
     def plot_season3_guardrails(self) -> Path:
         row = self.repository.read_csv("season3_priority_policy_validation.csv").iloc[0]
@@ -788,6 +1052,95 @@ class FigureRenderer:
         ax.tick_params(axis="x", rotation=30)
         self.clean_axis(ax)
         return self.save(fig, "13_season3_daily_priority_validation.png")
+
+    def plot_season3_priority_validation_combined(self) -> Path:
+        daily = self.repository.read_csv("season3_priority_policy_daily_validation.csv")
+        daily["event_date"] = pd.to_datetime(daily["event_date"].astype(str))
+        row = self.repository.read_csv("season3_priority_policy_validation.csv").iloc[0]
+        guardrail_values = pd.DataFrame(
+            {
+                "metric": [
+                    "Yield lift",
+                    "Impression\nretention",
+                    "Click\nretention",
+                    "Conversion\nretention",
+                    "Value proxy\nretention",
+                ],
+                "value": [
+                    row.season3_pct_yield_lift,
+                    row.season3_retained_impression_share,
+                    row.season3_click_retention,
+                    row.season3_conversion_retention,
+                    row.season3_value_proxy_retention,
+                ],
+                "threshold": [0.0, 0.99, 0.99, 0.99, 0.99],
+            }
+        )
+        fig, axes = plt.subplots(1, 2, figsize=(13.2, 4.9), gridspec_kw={"width_ratios": [1.1, 1.0]})
+        ax_daily, ax_guardrails = axes
+
+        sns.lineplot(
+            data=daily,
+            x="event_date",
+            y="daily_yield_lift_pct",
+            marker="o",
+            color=PALETTE["blue"],
+            linewidth=2.2,
+            ax=ax_daily,
+        )
+        ax_daily.axhline(0, color=PALETTE["slate"], linestyle="--", linewidth=1.2)
+        ax_daily.set_xlabel("Season-three date")
+        ax_daily.set_ylabel("Daily yield lift vs. logged floor")
+        ax_daily.yaxis.set_major_formatter(lambda y, _: f"{y:.0%}")
+        ax_daily.tick_params(axis="x", rotation=30)
+        ax_daily.text(
+            0.0,
+            1.04,
+            "(a) Daily yield lift",
+            transform=ax_daily.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=11.5,
+            fontweight="bold",
+        )
+        self.clean_axis(ax_daily)
+
+        colors = [
+            PALETTE["blue"] if metric == "Yield lift" else PALETTE["green"]
+            for metric in guardrail_values["metric"]
+        ]
+        sns.barplot(data=guardrail_values, x="metric", y="value", palette=colors, ax=ax_guardrails)
+        for idx, metric_row in guardrail_values.iterrows():
+            ax_guardrails.hlines(
+                metric_row["threshold"], idx - 0.38, idx + 0.38, color=PALETTE["ink"], linewidth=2
+            )
+            ax_guardrails.text(
+                idx,
+                metric_row["value"] + 0.025,
+                f"{metric_row['value']:.1%}",
+                ha="center",
+                va="bottom",
+                fontsize=9.0,
+                fontweight="bold",
+            )
+        ax_guardrails.set_xlabel("")
+        ax_guardrails.set_ylabel("Rate or lift")
+        ax_guardrails.yaxis.set_major_formatter(lambda y, _: f"{y:.0%}")
+        ax_guardrails.set_ylim(0, max(1.12, guardrail_values["value"].max() + 0.12))
+        ax_guardrails.tick_params(axis="x", rotation=16, labelsize=8.8)
+        ax_guardrails.text(
+            0.0,
+            1.04,
+            "(b) Holdout guardrails",
+            transform=ax_guardrails.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=11.5,
+            fontweight="bold",
+        )
+        self.clean_axis(ax_guardrails)
+        fig.subplots_adjust(wspace=0.35)
+        return self.save(fig, "13_season3_priority_validation_combined.png")
 
     def plot_decision_rule_gate_matrix(self) -> Path:
         df = self.repository.read_csv("decision_rule_gate_matrix.csv")
@@ -855,7 +1208,7 @@ class FigureRenderer:
 
     def plot_decision_rule_bootstrap_selection(self) -> Path:
         df = self.repository.read_csv("decision_rule_bootstrap_selection.csv").groupby("rule_label").head(3).copy()
-        df["policy_display"] = df["policy_number"].astype(str) + ": " + df["policy_label"].astype(str)
+        df["policy_display"] = df["policy_number"].astype(str) + ": " + df["selected_policy_id"].map(policy_label)
         fig, ax = plt.subplots(figsize=(11.5, 6.2))
         sns.barplot(data=df, x="selection_share", y="rule_label", hue="policy_display", ax=ax)
         ax.set_xlabel("Selection share across resamples")
@@ -882,6 +1235,7 @@ class FigureRenderer:
             "05_auction_replay_flow.png": self.render_replay_flow,
             "05_outcome_density_by_day.png": self.plot_outcome_density,
             "06_reserve_policy_tradeoff_frontier.png": self.plot_frontier,
+            "06_guardrail_policy_matrix.png": self.plot_guardrail_matrix,
             "06_shortlist_daily_stability.png": self.plot_daily_stability,
             "07_design_mde_curves.png": self.plot_mde_curves,
             "08_conservative_lower_bound_ranking.png": self.plot_conservative_ranking,
@@ -892,9 +1246,12 @@ class FigureRenderer:
             "10_equilibrium_sensitivity.png": self.plot_equilibrium_sensitivity,
             "10_support_collapse_curve.png": self.plot_support_collapse,
             "10_theory_guided_verdict.png": self.plot_theory_verdict,
+            "11_validation_design_and_launch_readiness.png": self.plot_validation_design_and_launch_readiness,
+            "11_decision_waterfall_and_validation_sequence.png": self.plot_decision_waterfall_and_validation_sequence,
             "11_decision_waterfall.png": self.render_decision_waterfall,
             "11_launch_readiness_checklist.png": self.plot_launch_readiness,
             "11_validation_sequence.png": self.render_validation_sequence,
+            "13_season2_vs_season3_distribution.png": self.plot_season2_vs_season3_distribution,
             "13_season2_vs_season3_transfer.png": self.plot_season3_transfer,
             "13_season3_daily_priority_validation.png": self.plot_season3_daily_validation,
             "13_season3_priority_policy_guardrails.png": self.plot_season3_guardrails,
