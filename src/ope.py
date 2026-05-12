@@ -113,32 +113,17 @@ class OPEEvidenceBuilder(ArtifactBuilder):
             best_policy_id = str(best["policy_id"])
             best_replay = float(best["pct_delta_yield_per_opportunity_vs_baseline"])
             best_p10 = float(best["crossfit_dr_pct_lift_p10"])
-        design_mde = {
-            "advertiser_cluster_test": {
-                "yield_pct_day1": 1.9780510226927497,
-                "fill_pct_day1": 1.5977274227305789,
-            },
-            "exchange_hour_switchback": {
-                "yield_pct_day1": 0.8502853201285557,
-                "fill_pct_day1": 0.7413290974283384,
-            },
-            "exchange_region_cluster_test": {
-                "yield_pct_day1": 0.6775203613734615,
-                "fill_pct_day1": 0.554914709658937,
-            },
-            "region_day_rollout": {
-                "yield_pct_day1": 0.5347317300564117,
-                "fill_pct_day1": 0.6004520353351905,
-            },
-        }
+        design_mde = self._estimate_design_mde_constants(baseline_yield, baseline_fill_rate)
+        self.write(pd.DataFrame(design_mde.values()), "validation_design_mde_inputs.csv")
         for design, constants in design_mde.items():
             for days in [1, 3, 7, 14, 28]:
                 scale = math.sqrt(days)
-                mde_yield_pct = constants["yield_pct_day1"] / scale
-                mde_fill_pct = constants["fill_pct_day1"] / scale
+                mde_yield_pct = constants["yield_pct_day1_estimated"] / scale
+                mde_fill_pct = constants["fill_pct_day1_estimated"] / scale
                 mde_rows.append(
                     {
                         "design_id": design,
+                        "assignment_unit": constants["assignment_unit"],
                         "experiment_days": days,
                         "baseline_yield_per_opportunity": baseline_yield,
                         "mde_yield_per_opportunity_abs": baseline_yield * mde_yield_pct,
@@ -173,6 +158,135 @@ class OPEEvidenceBuilder(ArtifactBuilder):
         )
         self.write(recommendations, "experiment_design_recommendations.csv", table=True)
         self.progress.done(f"experiment-design artifacts; {len(rows):,} candidate validation row(s)")
+
+    def _estimate_design_mde_constants(
+        self, baseline_yield: float, baseline_fill_rate: float
+    ) -> dict[str, dict[str, object]]:
+        """Estimate one-day MDE constants from Season 2 assignment-unit variation.
+
+        The constants are expressed as fractions of the logged-floor baseline. For
+        each validation design and each Season 2 day, we aggregate outcomes to the
+        design's assignment unit, compute the cluster-level standard deviation,
+        and use the equal-allocation two-sample normal approximation
+
+            (z_{1-alpha/2} + z_power) * sqrt(2 * s_d^2 / G_d),
+
+        where G_d is the number of assignment units observed that day. The final
+        one-day constant is the median daily MDE across Season 2 days.
+        """
+
+        design_units = {
+            "advertiser_cluster_test": ("advertiser_id",),
+            "exchange_hour_switchback": ("ad_exchange", "hour"),
+            "exchange_region_cluster_test": ("ad_exchange", "region"),
+            "region_day_rollout": ("region",),
+        }
+        z_alpha_over_two = 1.959963984540054
+        z_power = 0.8416212335729143
+        z_total = z_alpha_over_two + z_power
+        rows: list[dict[str, object]] = []
+        shards = sorted(self.workspace.season2_panel_dir.glob("season2_panel_*.parquet"))
+        if not shards:
+            raise FileNotFoundError(
+                f"No Season 2 panel shards found in {self.workspace.season2_panel_dir}. "
+                "Run notebook 0 before notebook 8."
+            )
+        columns = [
+            "event_date",
+            "ad_exchange",
+            "hour",
+            "region",
+            "advertiser_id",
+            "filled",
+            "pay_price",
+            "slot_floor_price",
+        ]
+        for shard_index, shard in enumerate(shards, start=1):
+            self.progress.log(
+                f"Estimating validation-design MDE inputs from Season 2 shard "
+                f"{shard_index}/{len(shards)}: {shard.name}."
+            )
+            frame = pd.read_parquet(shard, columns=columns)
+            frame["baseline_yield"] = np.where(
+                frame["filled"].astype(bool),
+                np.maximum(
+                    pd.to_numeric(frame["pay_price"], errors="coerce").fillna(0),
+                    pd.to_numeric(frame["slot_floor_price"], errors="coerce").fillna(0),
+                ),
+                0.0,
+            )
+            frame["filled"] = pd.to_numeric(frame["filled"], errors="coerce").fillna(0).astype(float)
+            event_date = str(frame["event_date"].dropna().iloc[0]) if frame["event_date"].notna().any() else shard.stem
+            for design_id, unit_columns in design_units.items():
+                group_columns = list(unit_columns)
+                grouped = (
+                    frame.groupby(group_columns, observed=True, dropna=False)
+                    .agg(
+                        opportunities=("filled", "size"),
+                        baseline_yield_sum=("baseline_yield", "sum"),
+                        filled_sum=("filled", "sum"),
+                    )
+                    .reset_index()
+                )
+                grouped = grouped[grouped["opportunities"].gt(0)].copy()
+                clusters = len(grouped)
+                if clusters < 2:
+                    continue
+                grouped["yield_per_opportunity"] = grouped["baseline_yield_sum"] / grouped["opportunities"]
+                grouped["fill_rate"] = grouped["filled_sum"] / grouped["opportunities"]
+                yield_sd = float(grouped["yield_per_opportunity"].std(ddof=1))
+                fill_sd = float(grouped["fill_rate"].std(ddof=1))
+                yield_mde_abs = z_total * math.sqrt(2.0) * yield_sd / math.sqrt(clusters)
+                fill_mde_abs = z_total * math.sqrt(2.0) * fill_sd / math.sqrt(clusters)
+                rows.append(
+                    {
+                        "design_id": design_id,
+                        "event_date": event_date,
+                        "assignment_unit": " x ".join(unit_columns),
+                        "clusters_observed": clusters,
+                        "mean_cluster_opportunities": float(grouped["opportunities"].mean()),
+                        "median_cluster_opportunities": float(grouped["opportunities"].median()),
+                        "yield_cluster_sd": yield_sd,
+                        "fill_cluster_sd": fill_sd,
+                        "yield_pct_day1": yield_mde_abs / baseline_yield if baseline_yield > 0 else np.nan,
+                        "fill_pct_day1": fill_mde_abs / baseline_fill_rate if baseline_fill_rate > 0 else np.nan,
+                        "alpha_two_sided": 0.05,
+                        "power": 0.80,
+                    }
+                )
+        daily = pd.DataFrame(rows)
+        if daily.empty:
+            raise ValueError("Could not estimate validation-design MDE constants from Season 2 panel shards.")
+        self.write(daily, "validation_design_mde_daily_inputs.csv")
+        constants = (
+            daily.groupby(["design_id", "assignment_unit"], as_index=False)
+            .agg(
+                yield_pct_day1_estimated=("yield_pct_day1", "median"),
+                fill_pct_day1_estimated=("fill_pct_day1", "median"),
+                median_daily_clusters=("clusters_observed", "median"),
+                mean_daily_clusters=("clusters_observed", "mean"),
+                median_cluster_opportunities=("median_cluster_opportunities", "median"),
+                days_used=("event_date", "nunique"),
+                alpha_two_sided=("alpha_two_sided", "first"),
+                power=("power", "first"),
+            )
+            .sort_values("design_id")
+        )
+        return {
+            str(row.design_id): {
+                "design_id": str(row.design_id),
+                "assignment_unit": str(row.assignment_unit),
+                "yield_pct_day1_estimated": float(row.yield_pct_day1_estimated),
+                "fill_pct_day1_estimated": float(row.fill_pct_day1_estimated),
+                "median_daily_clusters": float(row.median_daily_clusters),
+                "mean_daily_clusters": float(row.mean_daily_clusters),
+                "median_cluster_opportunities": float(row.median_cluster_opportunities),
+                "days_used": int(row.days_used),
+                "alpha_two_sided": float(row.alpha_two_sided),
+                "power": float(row.power),
+            }
+            for row in constants.itertuples(index=False)
+        }
 
     @staticmethod
     def _normal_ci(estimate: float, scores: np.ndarray) -> tuple[float, float, float]:
