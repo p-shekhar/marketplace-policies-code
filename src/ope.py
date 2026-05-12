@@ -169,9 +169,10 @@ class OPEEvidenceBuilder(ArtifactBuilder):
         design's assignment unit, compute the cluster-level standard deviation,
         and use the equal-allocation two-sample normal approximation
 
-            (z_{1-alpha/2} + z_power) * sqrt(2 * s_d^2 / G_d),
+            (z_{1-alpha/2} + z_power) * 2 * s_d / sqrt(G_d),
 
-        where G_d is the number of assignment units observed that day. The final
+        where G_d is the total number of assignment units observed that day,
+        split approximately evenly across treatment and control. The final
         one-day constant is the median daily MDE across Season 2 days.
         """
 
@@ -236,8 +237,8 @@ class OPEEvidenceBuilder(ArtifactBuilder):
                 grouped["fill_rate"] = grouped["filled_sum"] / grouped["opportunities"]
                 yield_sd = float(grouped["yield_per_opportunity"].std(ddof=1))
                 fill_sd = float(grouped["fill_rate"].std(ddof=1))
-                yield_mde_abs = z_total * math.sqrt(2.0) * yield_sd / math.sqrt(clusters)
-                fill_mde_abs = z_total * math.sqrt(2.0) * fill_sd / math.sqrt(clusters)
+                yield_mde_abs = z_total * 2.0 * yield_sd / math.sqrt(clusters)
+                fill_mde_abs = z_total * 2.0 * fill_sd / math.sqrt(clusters)
                 rows.append(
                     {
                         "design_id": design_id,
